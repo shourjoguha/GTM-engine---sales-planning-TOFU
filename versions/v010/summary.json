@@ -1,0 +1,60 @@
+{
+  "version_id": 10,
+  "timestamp": "2026-03-30T19:08:46.632666",
+  "description": "Pipeline run",
+  "planning_mode": "full_year",
+  "config_hash": "b157b274632a06362f84c27bd2594e94cdc6215cd7907162713ecc44c4b3fd1a",
+  "total_annual_bookings": 185978971.25465858,
+  "total_annual_pipeline": 564600813.5940425,
+  "total_annual_saos": 57556.796612886865,
+  "total_annual_deals": 20677.0,
+  "average_weighted_roi": 2439.2026289126875,
+  "months_capacity_constrained": 2,
+  "total_months": 12,
+  "segment_summary": {
+    "share": {
+      "CM.Marketing": 0.03,
+      "CM.Outbound": 0.03,
+      "CM.Partner": 0.03,
+      "EOR.Marketing": 0.4,
+      "EOR.Outbound": 0.06,
+      "EOR.Partner": 0.36,
+      "Payroll.Marketing": 0.03,
+      "Payroll.Outbound": 0.03,
+      "Payroll.Partner": 0.03
+    },
+    "projected_bookings": {
+      "CM.Marketing": 3021731.82,
+      "CM.Outbound": 1813039.09,
+      "CM.Partner": 2762726.24,
+      "EOR.Marketing": 89788602.72,
+      "EOR.Outbound": 10294154.62,
+      "EOR.Partner": 65348437.53,
+      "Payroll.Marketing": 5180111.7,
+      "Payroll.Outbound": 2590055.85,
+      "Payroll.Partner": 5180111.7
+    },
+    "required_saos": {
+      "CM.Marketing": 1726.7,
+      "CM.Outbound": 1726.7,
+      "CM.Partner": 1726.7,
+      "EOR.Marketing": 23022.72,
+      "EOR.Outbound": 3428.32,
+      "EOR.Partner": 20745.54,
+      "Payroll.Marketing": 1726.7,
+      "Payroll.Outbound": 1726.7,
+      "Payroll.Partner": 1726.7
+    },
+    "weighted_roi": {
+      "CM.Marketing": 1750.0,
+      "CM.Outbound": 1050.0,
+      "CM.Partner": 1600.0,
+      "EOR.Marketing": 3900.0,
+      "EOR.Outbound": 3002.82,
+      "EOR.Partner": 3150.0,
+      "Payroll.Marketing": 3000.0,
+      "Payroll.Outbound": 1500.0,
+      "Payroll.Partner": 3000.0
+    }
+  }
+}

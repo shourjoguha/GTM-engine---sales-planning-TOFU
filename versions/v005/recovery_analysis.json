@@ -1,0 +1,84 @@
+{
+  "quarterly_summary": [
+    {
+      "quarter": 1,
+      "target": 321480000.0,
+      "projected": 26345597.945035875,
+      "gap": 295134402.0549641,
+      "gap_pct": 0.9180490296595873
+    },
+    {
+      "quarter": 2,
+      "target": 423000000.0,
+      "projected": 28232149.59212477,
+      "gap": 394767850.40787524,
+      "gap_pct": 0.933257329569445
+    },
+    {
+      "quarter": 3,
+      "target": 436536000.0,
+      "projected": 29615414.6408436,
+      "gap": 406920585.35915637,
+      "gap_pct": 0.9321581389831683
+    },
+    {
+      "quarter": 4,
+      "target": 510984000.0,
+      "projected": 31517008.947961442,
+      "gap": 479466991.05203855,
+      "gap_pct": 0.9383209475287652
+    }
+  ],
+  "recovery_plan": [
+    {
+      "quarter": 1,
+      "adjusted_target": 669735355.3802747
+    },
+    {
+      "quarter": 2,
+      "adjusted_target": 805730158.7567883
+    },
+    {
+      "quarter": 3,
+      "adjusted_target": 842755402.6684259
+    },
+    {
+      "quarter": 4,
+      "adjusted_target": 950068912.0685458
+    }
+  ],
+  "stretch_flags": [
+    {
+      "quarter": 1,
+      "original": 321480000.0,
+      "adjusted": 669735355.3802747,
+      "stretch_ratio": 2.083287779582788
+    },
+    {
+      "quarter": 2,
+      "original": 423000000.0,
+      "adjusted": 805730158.7567883,
+      "stretch_ratio": 1.9047994296850785
+    },
+    {
+      "quarter": 3,
+      "original": 436536000.0,
+      "adjusted": 842755402.6684259,
+      "stretch_ratio": 1.9305518964493786
+    },
+    {
+      "quarter": 4,
+      "original": 510984000.0,
+      "adjusted": 950068912.0685458,
+      "stretch_ratio": 1.859292878189035
+    }
+  ],
+  "risk_assessment": "Annual Target Risk Assessment:\n  Projected shortfall: $1,576,289,829 (93.2% of target)\n  Status: AT RISK. Requires rebalancing or recovery levers.\n  Recovery quarter: Q4\n  WARNING: 4 quarter(s) exceed stretch threshold (>120%):\n    - Q1: adjusted to $669,735,355 (108.3% above original)\n    - Q2: adjusted to $805,730,159 (90.5% above original)\n    - Q3: adjusted to $842,755,403 (93.1% above original)\n    - Q4: adjusted to $950,068,912 (85.9% above original)\n",
+  "mentoring_relief": {
+    "current_mentoring_tax": 0.1,
+    "potential_relief": 0.05,
+    "required_reduction": null,
+    "recommendation": "If mentoring overhead (currently 10.0%) could be reduced by 50% (e.g., via external mentoring support), approximately 5.0% capacity could be freed."
+  },
+  "recovery_quarter": 4
+}

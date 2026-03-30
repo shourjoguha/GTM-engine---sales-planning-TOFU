@@ -66,16 +66,20 @@ allocation:
   optimizer_mode: greedy
 economics:
   use_calibration: false
+  baseline:
+    aggregation: median
+    grain: segment
+    source: actuals
   default_decay:
     asp:
       function: exponential
       rate: 0.0005
-      threshold: 500
+      threshold: 340
       floor_multiplier: 0.7
     win_rate:
       function: linear
       rate: 0.0001
-      threshold: 400
+      threshold: 260
       floor_multiplier: 0.6
   calibration:
     deal_data_file: data/dummy/deal_level_data.csv
@@ -121,6 +125,7 @@ ae_model:
   stretch_threshold: 1.2
 what_if_scenarios:
 - name: Q2 attrition spike
+  enabled: false
   description: 3 AEs leave in April, 2 more in May. Backfill delayed to 3 months.
   perturbations:
     ae_headcount_change:
@@ -128,6 +133,7 @@ what_if_scenarios:
       month_5: -2
     backfill_delay_months: 3
 - name: EOR pricing pressure
+  enabled: false
   description: Competitive pressure forces EOR ASP down 15%, win rates down 10%.
   perturbations:
     asp_multiplier:
@@ -135,6 +141,7 @@ what_if_scenarios:
     win_rate_multiplier:
       EOR: 0.9
 - name: Marketing budget cut
+  enabled: false
   description: Marketing budget reduced, lead volume drops 30%, ceiling reduced.
   perturbations:
     channel_share_ceiling:
@@ -142,12 +149,14 @@ what_if_scenarios:
     lead_volume_multiplier:
       Marketing: 0.7
 - name: Aggressive hiring freeze
+  enabled: false
   description: Q3 and Q4 hiring tranches cancelled due to budget constraints.
   perturbations:
     cancel_tranches:
     - 3
     - 4
 - name: New market entry (APAC)
+  enabled: false
   description: APAC launch with lower initial performance. 20 AEs dedicated.
   perturbations:
     add_region: APAC
@@ -166,3 +175,6 @@ system:
     max_iterations: 1000
     convergence_tolerance: 1e-8
   supersized_deal_threshold: 3.0
+  low_confidence_threshold: 20.0
+  confidence_risk_low_max_pct: 5
+  confidence_risk_medium_max_pct: 20

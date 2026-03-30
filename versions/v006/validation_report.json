@@ -1,0 +1,63 @@
+{
+  "passed": false,
+  "checks": [
+    {
+      "name": "Revenue Identity",
+      "passed": true,
+      "message": "OK: Revenue identity verified across 108 rows.",
+      "details": {
+        "failures": [],
+        "total_rows": 108
+      }
+    },
+    {
+      "name": "Share Constraints",
+      "passed": true,
+      "message": "OK: All shares within [5.0%, 40.0%] across 108 rows.",
+      "details": {
+        "violations": []
+      }
+    },
+    {
+      "name": "Share Sum",
+      "passed": true,
+      "message": "OK: Shares sum to 1.0 \u00b10.001 for all 12 period(s).",
+      "details": {
+        "failures": []
+      }
+    },
+    {
+      "name": "No Negative Values",
+      "passed": true,
+      "message": "OK: No negative values in 4 key columns.",
+      "details": {
+        "violations": []
+      }
+    },
+    {
+      "name": "Capacity Constraint",
+      "passed": true,
+      "message": "OK: Demand <= supply for all 12 period(s).",
+      "details": {
+        "violations": []
+      }
+    },
+    {
+      "name": "Target Alignment",
+      "passed": false,
+      "message": "FAIL: Total projected $115,710,171 vs target $188,000,000 (error: 38.5%).",
+      "details": {
+        "total_projected": 115710171.12596568,
+        "total_target": 188000000.0,
+        "rel_error_pct": 38.452036635124635
+      }
+    },
+    {
+      "name": "Confidence Coverage",
+      "passed": true,
+      "message": "Confidence level data not available; skipping check.",
+      "details": {}
+    }
+  ],
+  "summary": "VALIDATION FAILED: 6/7 checks passed. 1 issue(s) detected.\n\nFailed checks:\n  - Target Alignment: FAIL: Total projected $115,710,171 vs target $188,000,000 (error: 38.5%).\n"
+}

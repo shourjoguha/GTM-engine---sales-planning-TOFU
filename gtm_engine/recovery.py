@@ -202,10 +202,21 @@ class RecoveryEngine:
             DataFrame with columns:
             [quarter, target, projected, gap, gap_pct]
         """
-        # Merge targets and results
+        targets_by_period = (
+            targets[["period", "target_bookings"]]
+            .groupby("period", as_index=False)["target_bookings"]
+            .sum()
+        )
+
+        allocation_by_period = (
+            allocation_results
+            .groupby("period", as_index=False)["projected_bookings"]
+            .sum()
+        )
+
         merged = pd.merge(
-            targets[["period", "target_bookings"]],
-            allocation_results[["period", "projected_bookings"]],
+            targets_by_period,
+            allocation_by_period,
             on="period",
             how="outer"
         )

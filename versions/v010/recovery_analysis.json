@@ -1,0 +1,59 @@
+{
+  "quarterly_summary": [
+    {
+      "quarter": 1,
+      "target": 35625000.0,
+      "projected": 35625000.0,
+      "gap": 0.0,
+      "gap_pct": 0.0
+    },
+    {
+      "quarter": 2,
+      "target": 46875000.0,
+      "projected": 46875000.00000001,
+      "gap": -7.450580596923828e-09,
+      "gap_pct": -1.5894571940104166e-16
+    },
+    {
+      "quarter": 3,
+      "target": 48375000.0,
+      "projected": 48377203.669329256,
+      "gap": -2203.6693292558193,
+      "gap_pct": -4.555388794327275e-05
+    },
+    {
+      "quarter": 4,
+      "target": 56625000.0,
+      "projected": 55101767.58532931,
+      "gap": 1523232.414670691,
+      "gap_pct": 0.026900351693963636
+    }
+  ],
+  "recovery_plan": [
+    {
+      "quarter": 1,
+      "adjusted_target": 35625000.0
+    },
+    {
+      "quarter": 2,
+      "adjusted_target": 46875000.0
+    },
+    {
+      "quarter": 3,
+      "adjusted_target": 48375000.0
+    },
+    {
+      "quarter": 4,
+      "adjusted_target": 58146028.74534142
+    }
+  ],
+  "stretch_flags": [],
+  "risk_assessment": "Annual Target Risk Assessment:\n  Projected shortfall: $1,521,029 (0.8% of target)\n  Status: AT RISK. Requires rebalancing or recovery levers.\n  Recovery quarter: Q1\n",
+  "mentoring_relief": {
+    "current_mentoring_tax": 0.05,
+    "potential_relief": 0.025,
+    "required_reduction": null,
+    "recommendation": "If mentoring overhead (currently 5.0%) could be reduced by 50% (e.g., via external mentoring support), approximately 2.5% capacity could be freed."
+  },
+  "recovery_quarter": 1
+}

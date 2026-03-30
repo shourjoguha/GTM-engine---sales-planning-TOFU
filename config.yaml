@@ -35,7 +35,7 @@ dimensions:
 targets:
   annual_target: 188000000                      # $188M total bookings target for FY26
   growth_rate: 0.50                             # 50% YoY growth (used if deriving target from prior year)
-  target_source: "fixed"                        # "fixed" = use annual_target as-is
+  target_source: "growth"                        # "fixed" = use annual_target as-is
                                                 # "growth" = derive from prior_year_actuals × (1 + growth_rate)
   prior_year_actuals: 125000000                 # $125M FY25 actuals (used if target_source = "growth")
 
@@ -45,7 +45,9 @@ targets:
                                                 # quarterly: targets set per quarter, optimizer distributes within quarter
 
   # Seasonality weights — how the annual target distributes across months
-  # Must sum to 1.0. Set to null to use equal distribution (1/12 per month).
+  # Must sum to 1.0. 
+        # NOT IMPLEMENTED : Set to null to use equal distribution (1/12 per month).
+        # 0.8333 * 11 + 0.8334 = 1.0 
   # These defaults reflect observed peaks in months 4, 7, 10, 11
   seasonality_weights:
     month_1: 0.055
@@ -61,8 +63,8 @@ targets:
     month_11: 0.102                             # Peak month
     month_12: 0.095
 
-  # Peak months — used by AE Capacity module for hiring tranche timing
-  peak_months: [4, 7, 10, 11]
+  # NOT IMPLEMENTED Peak months — used by AE Capacity module for hiring tranche timing
+      # peak_months: [4, 7, 10, 11]
 
   # Planning mode
   planning_mode: "full_year"                    # "full_year" = optimise all 12 months
@@ -87,7 +89,7 @@ allocation:
 
   # Constraints — hard bounds on the allocation
   constraints:
-    share_floor: 0.05                           # Minimum share per segment (5%)
+    share_floor: 0.03                           # Minimum share per segment (3%)
     share_ceiling: 0.40                         # Maximum share per segment (40%)
     # Custom per-segment overrides (optional)
     # segment_overrides:
@@ -148,14 +150,14 @@ economics:
   default_decay:
     asp:
       function: "exponential"                   # "linear", "exponential", "step", "none"
-      rate: 0.0005                              # Decay rate parameter (see magnitude guide above)
+      rate: 0.0010                              # Decay rate parameter (see magnitude guide above)
       threshold: 340                            # Volume (SAOs) at which decay starts
-      floor_multiplier: 0.70                    # ASP won't drop below 70% of base
+      floor_multiplier: 0.75                    # ASP won't drop below 75% of base
     win_rate:
       function: "linear"
-      rate: 0.0001                              # Slight decay in win rate at high volume
+      rate: 0.005                              # Slight decay in win rate at high volume
       threshold: 260
-      floor_multiplier: 0.60                    # CW rate won't drop below 60% of base
+      floor_multiplier: 0.80                    # CW rate won't drop below 80% of base
 
   # Per-segment overrides (optional)
   # segment_overrides:
@@ -175,13 +177,13 @@ economics:
   # Calibration settings (used when use_calibration = true)
   calibration:
     deal_data_file: "data/dummy/deal_level_data.csv"
-    min_deals_for_fit: 50                       # Minimum deals to fit a decay curve
+    min_deals_for_fit: 5                       # Minimum deals to fit a decay curve
     fit_function: "exponential"                 # Function type to fit
 
   # Confidence scoring for sparse segments
   confidence:
-    high_threshold: 30                          # >= 30 deals = high confidence
-    medium_threshold: 15                        # >= 15 deals = medium confidence
+    high_threshold: 6                          # >= 6 deals = high confidence
+    medium_threshold: 3                        # >= 3 deals = medium confidence
     # Below medium_threshold = low confidence → use fallback
     fallback_hierarchy: ["sub_segment", "segment", "product", "global"]
     default_fallback_multiplier: 0.80           # New/sparse segments assumed at 80% of parent
@@ -197,26 +199,26 @@ economics:
 # ----------------------------------------------------------------------------
 ae_model:
   # Starting headcount
-  starting_hc: 85                               # Number of tenured AEs at start of FY26
+  starting_hc: 100                               # Number of tenured AEs at start of FY26
 
   # Baseline productivity
-  productivity_per_ae: 35                        # SAOs per fully-ramped AE per month (from FY25 data)
+  productivity_per_ae: 45                        # SAOs per fully-ramped AE per month (from FY25 data)
 
   # Hiring plan — list of tranches
   # Each tranche: count (number of new hires), start_month (when they start)
   hiring_plan:
-    - count: 15
+    - count: 25
       start_month: 1                            # January — early ramp for Q2 peak
-    - count: 10
-      start_month: 4                            # April — ramp for Q3 peak
-    - count: 15
-      start_month: 7                            # July — ramp for Q4 peak
-    - count: 11
-      start_month: 10                           # October — ramp for next FY
+    - count: 25
+      start_month: 2                            # February — ramp for Q3 peak
+    - count: 5
+      start_month: 4                            # April — ramp for Q4 peak
+    - count: 6
+      start_month: 6                           # June — ramp for next FY
 
   # Ramp parameters
   ramp:
-    duration_days: 90                           # Y: days to reach full productivity
+    duration_days: 45                           # Y: days to reach full productivity
     velocity: "linear"                          # Ramp function type. "linear" = productivity grows linearly
                                                 # from 0% to 100% over duration_days
     # ⚠️  POSSIBLE UPGRADE: Alternative ramp curves are NOT yet implemented in the engine.
@@ -230,9 +232,9 @@ ae_model:
 
   # Mentoring overhead
   mentoring:
-    overhead_pct_per_new_hire: 0.10             # A: 10% of a tenured AE's time per new hire they mentor
+    overhead_pct_per_new_hire: 0.05             # A: 5% of a tenured AE's time per new hire they mentor
                                                 # Degrades linearly from A% to 0% over ramp duration
-    max_mentees_per_ae: 2                       # No single AE mentors more than 2 new hires simultaneously
+    max_mentees_per_ae: 3                       # No single AE mentors more than 3 new hires simultaneously
     warning_threshold: 0.25                     # Flag if total mentoring tax on tenured pool > 25%
 
   # Shrinkage — time not spent selling
@@ -240,15 +242,15 @@ ae_model:
     pto_pct: 0.08                               # 8% of time = ~4 weeks PTO (static)
     admin_pct: 0.05                             # 5% of time on admin (static)
     enablement_base_pct: 0.03                   # 3% base enablement time
-    enablement_scaling: "proportional"          # How enablement scales with new hires
+    enablement_scaling: "fixed"          # How enablement scales with new hires
                                                 # "proportional" = enablement % grows with new_hire_ratio
                                                 # "fixed" = stays at base regardless
-    enablement_max_pct: 0.10                    # Cap on enablement time even with many new hires
+    enablement_max_pct: 0.05                    # Cap on enablement time even with many new hires
 
-  # Attrition
+  # Attrition rate
   attrition:
-    annual_rate: 0.15                           # 15% annual attrition
-    backfill_delay_months: 2                    # 2 months to backfill a departing AE
+    annual_rate: 0.10                           # 10% annual attrition
+    backfill_delay_months: 1                    # 1 months to backfill a departing AE
 
   # Stretch threshold — recovery rebalancing limit
   stretch_threshold: 1.20                       # Don't ask any quarter to do more than 120% of original plan
@@ -266,7 +268,7 @@ what_if_scenarios:
       ae_headcount_change:
         month_4: -3
         month_5: -2
-      backfill_delay_months: 3
+      backfill_delay_months: 0
 
   - name: "EOR pricing pressure"
     enabled: false
