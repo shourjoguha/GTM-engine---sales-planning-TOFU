@@ -1,0 +1,344 @@
+# ============================================================================
+# GTM Planning Engine — Configuration File
+# ============================================================================
+# This file controls ALL behaviour of the planning engine.
+# Modify values here to create different scenarios without touching code.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# DIMENSIONS
+# Controls which data columns are "active" for this planning run.
+# Set enabled: true/false to toggle dimensions on/off.
+# When a dimension is disabled, the engine aggregates across all its values.
+# ----------------------------------------------------------------------------
+dimensions:
+  product:
+    enabled: true
+    values: ["CM", "EOR", "Payroll"]          # Valid values in data
+  channel:
+    enabled: true
+    values: ["Marketing", "Outbound", "Partner"]
+  region:
+    enabled: false                              # Toggle ON when regional data is available
+    values: ["EMEA", "AMER", "APAC"]
+  segment:
+    enabled: false                              # e.g., SMB, Mid-Market, Enterprise
+    values: ["SMB", "Mid-Market", "Enterprise"]
+  deal_type:
+    enabled: false                              # e.g., New Business, Expansion
+    values: ["New", "Expansion"]
+
+# ----------------------------------------------------------------------------
+# TARGETS
+# Revenue goals and how they are distributed across the year.
+# ----------------------------------------------------------------------------
+targets:
+  annual_target: 188000000                      # $188M total bookings target for FY26
+  growth_rate: 0.50                             # 50% YoY growth (used if deriving target from prior year)
+  target_source: "fixed"                        # "fixed" = use annual_target as-is
+                                                # "growth" = derive from prior_year_actuals × (1 + growth_rate)
+  prior_year_actuals: 125000000                 # $125M FY25 actuals (used if target_source = "growth")
+
+  # Planning period granularity
+  period_type: "monthly"                        # "monthly" or "quarterly"
+                                                # monthly: targets set per month, optimizer runs per month
+                                                # quarterly: targets set per quarter, optimizer distributes within quarter
+
+  # Seasonality weights — how the annual target distributes across months
+  # Must sum to 1.0. Set to null to use equal distribution (1/12 per month).
+  # These defaults reflect observed peaks in months 4, 7, 10, 11
+  seasonality_weights:
+    month_1: 0.055
+    month_2: 0.065
+    month_3: 0.070
+    month_4: 0.095                              # Peak month
+    month_5: 0.075
+    month_6: 0.080
+    month_7: 0.095                              # Peak month
+    month_8: 0.078
+    month_9: 0.085
+    month_10: 0.105                             # Peak month
+    month_11: 0.102                             # Peak month
+    month_12: 0.095
+
+  # Peak months — used by AE Capacity module for hiring tranche timing
+  peak_months: [4, 7, 10, 11]
+
+  # Planning mode
+  planning_mode: "full_year"                    # "full_year" = optimise all 12 months
+                                                # "rolling_forward" = lock completed months, use actuals
+                                                # "manual_lock" = lock specific months (see below)
+  locked_months: []                             # Used in manual_lock mode. e.g., [1, 2, 3]
+  actuals_file: null                            # Path to actuals CSV for rolling_forward mode
+
+# ----------------------------------------------------------------------------
+# ALLOCATION
+# How SAOs are distributed across segments.
+# Controls the objective function, constraints, and guardrails.
+# ----------------------------------------------------------------------------
+allocation:
+  # Objective function — what the optimizer tries to achieve
+  objective:
+    metric: "bookings"                          # "bookings", "pipeline", "revenue"
+    direction: "maximize"                       # "maximize" or "minimize"
+    # Simple conversion relationship (Pipeline × conversion_rate ≈ Bookings)
+    # Used when switching objectives to estimate the other metric
+    pipeline_to_bookings_ratio: 0.40            # historical pipeline-to-bookings conversion
+
+  # Constraints — hard bounds on the allocation
+  constraints:
+    share_floor: 0.05                           # Minimum share per segment (5%)
+    share_ceiling: 0.40                         # Maximum share per segment (40%)
+    # Custom per-segment overrides (optional)
+    # segment_overrides:
+    #   "EOR.Marketing":
+    #     floor: 0.10
+    #     ceiling: 0.35
+    #   "Payroll.Partner":
+    #     floor: 0.05
+    #     ceiling: 0.20
+
+  # Optimizer mode
+  optimizer_mode: "greedy"                      # "greedy" = fast, explainable (enhanced current algorithm)
+                                                # "solver" = scipy.optimize (precise, handles non-linear decay)
+
+# ----------------------------------------------------------------------------
+# ECONOMICS
+# Marginal cost and revenue curves — how ASP and CW Rate change with volume.
+# Controls whether we use defaults or calibrated values.
+# ----------------------------------------------------------------------------
+economics:
+  # Use calibrated values (from deal-level data) or defaults?
+  use_calibration: false                        # Set true when calibration data is available
+
+  # Baseline value computation — how base ASP and CW rate are derived from actuals
+  baseline:
+    aggregation: "median"                       # "median", "mean", or "mode"
+                                                # median: robust to outliers (recommended for ASP)
+                                                # mean: simple average, pulled by large deals
+                                                # mode: most frequent value (useful for tiered pricing)
+    grain: "segment"                            # "segment" = one baseline per active dimension combo
+                                                #   e.g., product × channel → "EOR.Marketing" gets its own ASP
+                                                # "global" = one baseline for all segments (ignores dimensions)
+    source: "actuals"                           # "actuals" = computed from prepared data file
+                                                # "manual" = use manual_baselines below (override)
+    # Manual baseline overrides (used when source = "manual" or as fallback for missing segments)
+    # manual_baselines:
+    #   "EOR.Marketing":
+    #     asp: 12000
+    #     win_rate: 0.38
+    #   "CM.Outbound":
+    #     asp: 5500
+    #     win_rate: 0.32
+
+  # Default decay parameters (used when use_calibration = false)
+  # Applied globally unless overridden per segment
+  #
+  # ℹ️  RATE MAGNITUDE GUIDE (rate means very different things per function type):
+  #   exponential: rate 0.0003–0.001 typical. At rate=0.0005, 500 excess SAOs → 78% of base.
+  #   linear:      rate 1.0–10.0 typical (dollars per SAO). At rate=5.0, 500 excess → base - $2,500.
+  #   step:        rate 0.10–0.25 typical (fraction drop). At rate=0.15, crossing threshold → 85% of base.
+  #   none:        rate ignored.
+  #
+  # ℹ️  CHANNEL-TO-FUNCTION RECOMMENDATIONS:
+  #   Marketing → "step" (lead gen either converts or doesn't — sharp cutoff at capacity)
+  #   Partner   → "exponential" (diminishing returns as partner pipeline matures)
+  #   Outbound  → "linear" (steady degradation as reps work further down prospect lists)
+  #
+  default_decay:
+    asp:
+      function: "exponential"                   # "linear", "exponential", "step", "none"
+      rate: 0.0005                              # Decay rate parameter (see magnitude guide above)
+      threshold: 340                            # Volume (SAOs) at which decay starts
+      floor_multiplier: 0.70                    # ASP won't drop below 70% of base
+    win_rate:
+      function: "linear"
+      rate: 0.0001                              # Slight decay in win rate at high volume
+      threshold: 260
+      floor_multiplier: 0.60                    # CW rate won't drop below 60% of base
+
+  # Per-segment overrides (optional)
+  # segment_overrides:
+  #   "EOR.Marketing":
+  #     asp:
+  #       function: "exponential"
+  #       rate: 0.0003
+  #       threshold: 600
+  #       floor_multiplier: 0.75
+  #   "CM.Outbound":
+  #     win_rate:
+  #       function: "linear"
+  #       rate: 0.0002
+  #       threshold: 300
+  #       floor_multiplier: 0.50
+
+  # Calibration settings (used when use_calibration = true)
+  calibration:
+    deal_data_file: "data/dummy/deal_level_data.csv"
+    min_deals_for_fit: 50                       # Minimum deals to fit a decay curve
+    fit_function: "exponential"                 # Function type to fit
+
+  # Confidence scoring for sparse segments
+  confidence:
+    high_threshold: 30                          # >= 30 deals = high confidence
+    medium_threshold: 15                        # >= 15 deals = medium confidence
+    # Below medium_threshold = low confidence → use fallback
+    fallback_hierarchy: ["sub_segment", "segment", "product", "global"]
+    default_fallback_multiplier: 0.80           # New/sparse segments assumed at 80% of parent
+
+  # Per-segment fallback multipliers (optional)
+  # fallback_multipliers:
+  #   "APAC.EOR": 0.70                         # New APAC EOR market at 70% of global EOR
+  #   "Enterprise.Payroll": 0.90               # Enterprise Payroll close to global average
+
+# ----------------------------------------------------------------------------
+# AE MODEL
+# Workforce planning — hiring, ramp, mentoring, shrinkage, attrition.
+# ----------------------------------------------------------------------------
+ae_model:
+  # Starting headcount
+  starting_hc: 85                               # Number of tenured AEs at start of FY26
+
+  # Baseline productivity
+  productivity_per_ae: 35                        # SAOs per fully-ramped AE per month (from FY25 data)
+
+  # Hiring plan — list of tranches
+  # Each tranche: count (number of new hires), start_month (when they start)
+  hiring_plan:
+    - count: 15
+      start_month: 1                            # January — early ramp for Q2 peak
+    - count: 10
+      start_month: 4                            # April — ramp for Q3 peak
+    - count: 15
+      start_month: 7                            # July — ramp for Q4 peak
+    - count: 11
+      start_month: 10                           # October — ramp for next FY
+
+  # Ramp parameters
+  ramp:
+    duration_days: 90                           # Y: days to reach full productivity
+    velocity: "linear"                          # Ramp function type. "linear" = productivity grows linearly
+                                                # from 0% to 100% over duration_days
+    # ⚠️  POSSIBLE UPGRADE: Alternative ramp curves are NOT yet implemented in the engine.
+    # Currently only "linear" is supported in ae_capacity.py.
+    # To add "step" or "custom", modify ae_capacity.py _process_tranches() method
+    # to branch on this config value, similar to how economics_engine.py handles
+    # different decay functions.
+    # Planned alternatives:
+    # "step" = 0% for first 30 days, then 50%, then 100% (good for structured bootcamps)
+    # "custom" = user-defined curve as list of (day, productivity%) pairs
+
+  # Mentoring overhead
+  mentoring:
+    overhead_pct_per_new_hire: 0.10             # A: 10% of a tenured AE's time per new hire they mentor
+                                                # Degrades linearly from A% to 0% over ramp duration
+    max_mentees_per_ae: 2                       # No single AE mentors more than 2 new hires simultaneously
+    warning_threshold: 0.25                     # Flag if total mentoring tax on tenured pool > 25%
+
+  # Shrinkage — time not spent selling
+  shrinkage:
+    pto_pct: 0.08                               # 8% of time = ~4 weeks PTO (static)
+    admin_pct: 0.05                             # 5% of time on admin (static)
+    enablement_base_pct: 0.03                   # 3% base enablement time
+    enablement_scaling: "proportional"          # How enablement scales with new hires
+                                                # "proportional" = enablement % grows with new_hire_ratio
+                                                # "fixed" = stays at base regardless
+    enablement_max_pct: 0.10                    # Cap on enablement time even with many new hires
+
+  # Attrition
+  attrition:
+    annual_rate: 0.15                           # 15% annual attrition
+    backfill_delay_months: 2                    # 2 months to backfill a departing AE
+
+  # Stretch threshold — recovery rebalancing limit
+  stretch_threshold: 1.20                       # Don't ask any quarter to do more than 120% of original plan
+
+# ----------------------------------------------------------------------------
+# WHAT-IF SCENARIOS
+# Up to 5 named risk scenarios to model against the base plan.
+# Each scenario is a bundle of perturbations applied to the base config.
+# ----------------------------------------------------------------------------
+what_if_scenarios:
+  - name: "Q2 attrition spike"
+    enabled: false
+    description: "3 AEs leave in April, 2 more in May. Backfill delayed to 3 months."
+    perturbations:
+      ae_headcount_change:
+        month_4: -3
+        month_5: -2
+      backfill_delay_months: 3
+
+  - name: "EOR pricing pressure"
+    enabled: false
+    description: "Competitive pressure forces EOR ASP down 15%, win rates down 10%."
+    perturbations:
+      asp_multiplier:
+        EOR: 0.85
+      win_rate_multiplier:
+        EOR: 0.90
+
+  - name: "Marketing budget cut"
+    enabled: false
+    description: "Marketing budget reduced, lead volume drops 30%, ceiling reduced."
+    perturbations:
+      channel_share_ceiling:
+        Marketing: 0.25
+      lead_volume_multiplier:
+        Marketing: 0.70
+
+  - name: "Aggressive hiring freeze"
+    enabled: false
+    description: "Q3 and Q4 hiring tranches cancelled due to budget constraints."
+    perturbations:
+      cancel_tranches: [3, 4]                   # Cancel the 3rd and 4th hiring tranches
+
+  - name: "New market entry (APAC)"
+    enabled: false
+    description: "APAC launch with lower initial performance. 20 AEs dedicated."
+    perturbations:
+      add_region: "APAC"
+      region_performance_multiplier:
+        APAC: 0.60                              # 60% of global performance initially
+      ae_headcount_change:
+        month_6: 20                             # 20 APAC AEs start in June
+
+# ----------------------------------------------------------------------------
+# SYSTEM
+# Technical settings for the engine.
+# ----------------------------------------------------------------------------
+system:
+  # Output settings
+  output_dir: "versions"                        # Where version snapshots are saved
+  results_format: "csv"                         # "csv" or "excel"
+  log_level: "info"                             # "debug", "info", "warning", "error"
+
+  # Numerical settings
+  tolerance: 0.001                              # Tolerance for share sum validation (0.1%)
+  revenue_tolerance: 0.01                       # Tolerance for revenue identity check (1%)
+
+  # Solver settings (for scipy mode)
+  solver:
+    method: "SLSQP"                             # scipy.optimize method
+    max_iterations: 1000
+    convergence_tolerance: 1e-8
+
+  # Supersized deal detection
+  supersized_deal_threshold: 3.0                # Flag if actual revenue > 3x expected (SAOs × ASP)
+
+  # Confidence risk thresholds — shared by ValidationEngine and VersionComparator.
+  # Defining them here ensures both modules use the same business definition of
+  # "acceptable" low-confidence exposure. Changing one value updates both.
+  #
+  #   low_confidence_threshold   = the pass/fail gate in ValidationEngine:
+  #                                plans where >X% of bookings come from low-confidence
+  #                                segments fail the Confidence Coverage check.
+  #   confidence_risk_low_max_pct    = upper bound of the "Low risk" bucket in VersionComparator
+  #   confidence_risk_medium_max_pct = upper bound of the "Medium risk" bucket.
+  #                                    Values above this are flagged "High risk".
+  #
+  # Alignment: low_confidence_threshold == confidence_risk_medium_max_pct (both 20%).
+  # This means a plan that "passes" validation sits in the Low-or-Medium comparator
+  # bucket, and a plan that "fails" validation is always flagged High risk in comparisons.
+  low_confidence_threshold: 20.0                # ValidationEngine gate (% of bookings from low-conf segments)
+  confidence_risk_low_max_pct: 5                # VersionComparator: < 5% = Low risk
+  confidence_risk_medium_max_pct: 20            # VersionComparator: 5–20% = Medium, > 20% = High

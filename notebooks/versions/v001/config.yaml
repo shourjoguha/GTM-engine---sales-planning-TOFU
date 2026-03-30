@@ -1,0 +1,168 @@
+dimensions:
+  product:
+    enabled: true
+    values:
+    - CM
+    - EOR
+    - Payroll
+  channel:
+    enabled: true
+    values:
+    - Marketing
+    - Outbound
+    - Partner
+  region:
+    enabled: false
+    values:
+    - EMEA
+    - AMER
+    - APAC
+  segment:
+    enabled: false
+    values:
+    - SMB
+    - Mid-Market
+    - Enterprise
+  deal_type:
+    enabled: false
+    values:
+    - New
+    - Expansion
+targets:
+  annual_target: 188000000
+  growth_rate: 0.5
+  target_source: fixed
+  prior_year_actuals: 125000000
+  period_type: monthly
+  seasonality_weights:
+    month_1: 0.055
+    month_2: 0.065
+    month_3: 0.07
+    month_4: 0.095
+    month_5: 0.075
+    month_6: 0.08
+    month_7: 0.095
+    month_8: 0.078
+    month_9: 0.085
+    month_10: 0.105
+    month_11: 0.102
+    month_12: 0.095
+  peak_months:
+  - 4
+  - 7
+  - 10
+  - 11
+  planning_mode: full_year
+  locked_months: []
+  actuals_file: null
+allocation:
+  objective:
+    metric: bookings
+    direction: maximize
+    pipeline_to_bookings_ratio: 0.4
+  constraints:
+    share_floor: 0.05
+    share_ceiling: 0.4
+  optimizer_mode: greedy
+economics:
+  use_calibration: false
+  default_decay:
+    asp:
+      function: exponential
+      rate: 0.0005
+      threshold: 500
+      floor_multiplier: 0.7
+    win_rate:
+      function: linear
+      rate: 0.0001
+      threshold: 400
+      floor_multiplier: 0.6
+  calibration:
+    deal_data_file: data/dummy/deal_level_data.csv
+    min_deals_for_fit: 50
+    fit_function: exponential
+  confidence:
+    high_threshold: 30
+    medium_threshold: 15
+    fallback_hierarchy:
+    - sub_segment
+    - segment
+    - product
+    - global
+    default_fallback_multiplier: 0.8
+ae_model:
+  starting_hc: 85
+  productivity_per_ae: 35
+  hiring_plan:
+  - count: 15
+    start_month: 1
+  - count: 10
+    start_month: 4
+  - count: 15
+    start_month: 7
+  - count: 11
+    start_month: 10
+  ramp:
+    duration_days: 90
+    velocity: linear
+  mentoring:
+    overhead_pct_per_new_hire: 0.1
+    max_mentees_per_ae: 2
+    warning_threshold: 0.25
+  shrinkage:
+    pto_pct: 0.08
+    admin_pct: 0.05
+    enablement_base_pct: 0.03
+    enablement_scaling: proportional
+    enablement_max_pct: 0.1
+  attrition:
+    annual_rate: 0.15
+    backfill_delay_months: 2
+  stretch_threshold: 1.2
+what_if_scenarios:
+- name: Q2 attrition spike
+  description: 3 AEs leave in April, 2 more in May. Backfill delayed to 3 months.
+  perturbations:
+    ae_headcount_change:
+      month_4: -3
+      month_5: -2
+    backfill_delay_months: 3
+- name: EOR pricing pressure
+  description: Competitive pressure forces EOR ASP down 15%, win rates down 10%.
+  perturbations:
+    asp_multiplier:
+      EOR: 0.85
+    win_rate_multiplier:
+      EOR: 0.9
+- name: Marketing budget cut
+  description: Marketing budget reduced, lead volume drops 30%, ceiling reduced.
+  perturbations:
+    channel_share_ceiling:
+      Marketing: 0.25
+    lead_volume_multiplier:
+      Marketing: 0.7
+- name: Aggressive hiring freeze
+  description: Q3 and Q4 hiring tranches cancelled due to budget constraints.
+  perturbations:
+    cancel_tranches:
+    - 3
+    - 4
+- name: New market entry (APAC)
+  description: APAC launch with lower initial performance. 20 AEs dedicated.
+  perturbations:
+    add_region: APAC
+    region_performance_multiplier:
+      APAC: 0.6
+    ae_headcount_change:
+      month_6: 20
+system:
+  output_dir: versions
+  results_format: csv
+  log_level: info
+  tolerance: 0.001
+  revenue_tolerance: 0.01
+  solver:
+    method: SLSQP
+    max_iterations: 1000
+    convergence_tolerance: 1e-8
+  supersized_deal_threshold: 3.0

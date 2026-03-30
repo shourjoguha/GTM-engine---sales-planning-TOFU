@@ -1,0 +1,10 @@
+{
+  "version_id": 1,
+  "timestamp": "2026-03-28T18:18:50.974310",
+  "description": "Phase 1 Foundation Test",
+  "planning_mode": "full_year",
+  "config_hash": "3bbbc6e88b7c3a03071ecb843fde5a4e2fddd432741aaf57ded0bf00a095248c",
+  "total_bookings": 2206500,
+  "total_saos": 1000,
+  "total_pipeline": 5950000
+}

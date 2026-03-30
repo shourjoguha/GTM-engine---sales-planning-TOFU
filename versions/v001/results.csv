@@ -1,0 +1,4 @@
+segment,month,share,required_SAOs,pipeline,bookings
+CM.Marketing,1,0.3,300,1500000,525000
+EOR.Marketing,1,0.4,400,2800000,1092000
+Payroll.Outbound,1,0.3,300,1650000,589500
