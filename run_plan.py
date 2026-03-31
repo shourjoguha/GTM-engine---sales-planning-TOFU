@@ -5,9 +5,6 @@ GTM Planning Engine — Master Script
 Runs the full planning pipeline end-to-end and saves all intermediate
 results into a versioned output directory (versions/v{NNN}/).
 
-run_plan.py is for demo purposes only. it's not yet calling comparator, what_if, adjustments.
-can hook these up as a run_planv2 so there are are different complexity walkthroughs.
-
 Usage:
     python run_plan.py
     python run_plan.py --config config.yaml --description "FY26 base plan"

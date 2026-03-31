@@ -11,18 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # Example folder path structure: /Users/shourjosmac/Documents/Claude/Projects/Interview prep/GTM_Planning_Engine/versions/v010/
-def resolve_default_data_dir() -> Path:
-    versions_dir = PROJECT_ROOT / "versions"
-    version_dirs = [
-        path for path in versions_dir.glob("v*")
-        if path.is_dir() and path.name[1:].isdigit()
-    ]
-    if not version_dirs:
-        return versions_dir
-    return max(version_dirs, key=lambda path: int(path.name[1:]))
-
-
-DEFAULT_DATA_DIR = resolve_default_data_dir()
+DEFAULT_DATA_DIR = PROJECT_ROOT / "versions" / "v010"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
