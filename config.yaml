@@ -101,8 +101,10 @@ allocation:
     #     ceiling: 0.20
 
   # Optimizer mode
-  optimizer_mode: "greedy"                      # "greedy" = fast, explainable (enhanced current algorithm)
+  optimizer_mode: "solver"                       # "greedy" = fast, explainable (enhanced current algorithm)
                                                 # "solver" = scipy.optimize (precise, handles non-linear decay)
+                                                # NOTE: "solver" recommended when cash_cycle is enabled for
+                                                # precise handling of in-window-weighted ROI interactions
 
 # ----------------------------------------------------------------------------
 # ECONOMICS
@@ -192,6 +194,56 @@ economics:
   # fallback_multipliers:
   #   "APAC.EOR": 0.70                         # New APAC EOR market at 70% of global EOR
   #   "Enterprise.Payroll": 0.90               # Enterprise Payroll close to global average
+
+  # --------------------------------------------------------------------------
+  # CASH CYCLE
+  # Models the time lag between pursuing SAOs and closing deals as bookings.
+  # Different products have different sales cycles — EOR deals may take 2-3
+  # months to close while CM deals close faster. SAOs chased in late months
+  # may not convert to bookings within the 12-month planning horizon.
+  #
+  # The distribution maps {delay_months: probability} and must sum to 1.0.
+  # A delay of 0 means the deal closes in the same month the SAO is created.
+  #
+  # When enabled, the optimizer weights segment ROI by "in-window factor"
+  # (fraction of bookings landing within planning horizon), steering late-month
+  # allocation toward shorter-cycle products. Bookings that spill past the
+  # horizon are tracked separately as "deferred bookings".
+  # --------------------------------------------------------------------------
+  cash_cycle:
+    enabled: true
+    grain: "product"                            # Dimension grain for cash cycle delays
+                                                # Only "product" supported for now.
+                                                # Other grains (region, segment) are disabled,
+                                                # similar to how dimensions.region.enabled works.
+
+    # Default realization distribution (applied when no product override exists)
+    # Keys = delay in months, values = probability. Must sum to 1.0.
+    default_distribution:
+      0: 0.30                                   # 30% of SAOs convert in the same month
+      1: 0.40                                   # 40% convert 1 month later
+      2: 0.20                                   # 20% convert 2 months later
+      3: 0.10                                   # 10% convert 3 months later
+
+    # Per-product overrides (key = product name from dimensions.product.values)
+    product_overrides:
+      EOR:                                      # Longer cycle — complex multi-country deals
+        0: 0.10
+        1: 0.30
+        2: 0.40
+        3: 0.20
+      CM:                                       # Shorter cycle — simpler product
+        0: 0.40
+        1: 0.35
+        2: 0.15
+        3: 0.10
+      Payroll:                                  # Medium cycle
+        0: 0.50
+        1: 0.30
+        2: 0.20
+
+    # Planning horizon — bookings beyond this month are "deferred"
+    planning_horizon_months: 12
 
 # ----------------------------------------------------------------------------
 # AE MODEL

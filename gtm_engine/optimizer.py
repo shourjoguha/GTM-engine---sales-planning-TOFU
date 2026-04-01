@@ -156,16 +156,24 @@ class AllocationOptimizer:
 
         # Solver-specific
         sys_cfg = config.get("system", {})
-        solver_cfg = sys_cfg.get("solver", {})
+        solver_cfg = sys_cfg.get("solver", {}) if isinstance(sys_cfg, dict) else {}
         self.solver_config = {
             "method": solver_cfg.get("method", "SLSQP"),
-            "max_iterations": solver_cfg.get("max_iterations", 1000),
-            "convergence_tolerance": solver_cfg.get("convergence_tolerance", 1e-8),
+            "max_iterations": int(solver_cfg.get("max_iterations", 1000)),
+            "convergence_tolerance": float(solver_cfg.get("convergence_tolerance", 1e-8)),
         }
+
+        # Cash cycle awareness
+        cash_cycle_cfg = config.get("economics", {}).get("cash_cycle", {})
+        if isinstance(cash_cycle_cfg, dict):
+            self.cash_cycle_enabled = cash_cycle_cfg.get("enabled", False)
+        else:
+            self.cash_cycle_enabled = False
 
         logger.info(f"AllocationOptimizer initialized: mode={self.mode}, "
                     f"objective={self.objective_metric}, "
-                    f"share_floor={self.share_floor}, share_ceiling={self.share_ceiling}")
+                    f"share_floor={self.share_floor}, share_ceiling={self.share_ceiling}, "
+                    f"cash_cycle={'ON' if self.cash_cycle_enabled else 'OFF'}")
 
     def optimize(self,
                  targets: pd.DataFrame,
@@ -408,6 +416,14 @@ class AllocationOptimizer:
                     current_volume, economics_engine, is_supersized
                 )
 
+                # Cash cycle: weight marginal ROI by in-window factor so the
+                # optimizer prefers shorter-cycle products in late months
+                if self.cash_cycle_enabled and economics_engine is not None:
+                    product = economics_engine._extract_product_from_segment(seg_key)
+                    period_num = period_data.iloc[0].get("month", 1) if "month" in period_data.columns else 1
+                    iwf = economics_engine.get_in_window_factor(product, period_num)
+                    marginal_roi *= iwf
+
                 if marginal_roi > best_marginal_roi:
                     best_marginal_roi = marginal_roi
                     best_segment = seg_key
@@ -551,6 +567,15 @@ class AllocationOptimizer:
                 _, _, roi = self._get_segment_roi(
                     seg_key, base_asp, base_cw, volume, economics_engine, is_supersized
                 )
+
+                # Cash cycle: weight ROI by in-window factor for the solver
+                if self.cash_cycle_enabled and economics_engine is not None:
+                    product = economics_engine._extract_product_from_segment(seg_key)
+                    period_num = (period_data.iloc[0].get("month", 1)
+                                  if "month" in period_data.columns else 1)
+                    iwf = economics_engine.get_in_window_factor(product, period_num)
+                    roi *= iwf
+
                 weighted_roi += share * roi
 
             # Penalize if weighted_roi is zero or negative
@@ -861,6 +886,18 @@ class AllocationOptimizer:
                 "weighted_roi": roi,
             }
 
+            # Cash cycle: add in-window and deferred bookings columns
+            if self.cash_cycle_enabled and economics_engine is not None:
+                product = economics_engine._extract_product_from_segment(seg_key)
+                iwf = economics_engine.get_in_window_factor(product, period_num)
+                row["in_window_factor"] = iwf
+                row["in_window_bookings"] = projected_bookings * iwf
+                row["deferred_bookings"] = projected_bookings * (1.0 - iwf)
+            else:
+                row["in_window_factor"] = 1.0
+                row["in_window_bookings"] = projected_bookings
+                row["deferred_bookings"] = 0.0
+
             # Add dimension values from segment data
             active_dims = self._get_active_dimensions(period_data)
             for dim in active_dims:
@@ -913,12 +950,22 @@ class AllocationOptimizer:
                 - months_capacity_constrained
                 - average_weighted_roi
         """
+        total_bookings = results["projected_bookings"].sum()
+        total_saos = results["required_saos"].sum()
+
         summary = {
-            "total_annual_bookings": results["projected_bookings"].sum(),
+            "total_annual_bookings": total_bookings,
             "total_annual_pipeline": results["projected_pipeline"].sum(),
-            "total_annual_saos": results["required_saos"].sum(),
+            "total_annual_saos": total_saos,
             "total_annual_deals": results["projected_deals"].sum(),
-            "average_weighted_roi": results["weighted_roi"].mean(),
+            # Bookings-weighted ROI: total bookings / total SAOs.
+            # This is the dollar-weighted average ROI across the plan —
+            # i.e., for every SAO the business pursues, this is the
+            # expected revenue return. High-volume segments (which drive
+            # most bookings) contribute proportionally more than small ones.
+            # Contrast with a simple mean of per-row ROI, which would treat
+            # a 3%-share segment equally with a 40%-share segment.
+            "average_weighted_roi": (total_bookings / total_saos) if total_saos > 0 else 0.0,
             "months_capacity_constrained": results[results["capacity_flag"] == 1]["month"].nunique(),
             "total_months": results["month"].nunique(),
         }
@@ -928,9 +975,24 @@ class AllocationOptimizer:
             "share": "mean",
             "projected_bookings": "sum",
             "required_saos": "sum",
-            "weighted_roi": "mean",
         }).round(2)
 
+        # Per-segment bookings-weighted ROI (bookings / SAOs for each segment)
+        segment_summary["weighted_roi"] = (
+            segment_summary["projected_bookings"] / segment_summary["required_saos"]
+        ).where(segment_summary["required_saos"] > 0, 0.0).round(2)
+
         summary["segment_summary"] = segment_summary.to_dict()
+
+        # Cash cycle metrics (when enabled)
+        if "in_window_bookings" in results.columns:
+            total_in_window = results["in_window_bookings"].sum()
+            total_deferred = results["deferred_bookings"].sum()
+            total_bookings = summary["total_annual_bookings"]
+            summary["total_in_window_bookings"] = total_in_window
+            summary["total_deferred_bookings"] = total_deferred
+            summary["in_window_pct"] = (
+                (total_in_window / total_bookings * 100) if total_bookings > 0 else 0.0
+            )
 
         return summary

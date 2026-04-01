@@ -112,6 +112,50 @@ def build_economics_decay(
     return pd.DataFrame(rows)
 
 
+def build_cashcycle_waterfall(
+    results: pd.DataFrame,
+    economics: EconomicsEngine,
+    config: object,
+) -> pd.DataFrame:
+    """Build month-by-month booking realization waterfall from cash cycle delays.
+
+    Shows how SAOs created in each month distribute bookings across future months
+    based on the product's cash cycle probability distribution.
+
+    Args:
+        results: Allocation results with projected_bookings per segment per month.
+        economics: EconomicsEngine with cash cycle methods.
+        config: ConfigManager for active dimensions lookup.
+
+    Returns:
+        DataFrame with columns: sao_month, booking_month, segment_key, product,
+        delay_months, probability, sao_bookings, realized_bookings, in_window.
+    """
+    horizon = config.get("economics.cash_cycle", {}).get("planning_horizon_months", 12)
+    rows = []
+    for _, row in results.iterrows():
+        month = int(row["month"])
+        seg_key = row["segment_key"]
+        product = economics._extract_product_from_segment(seg_key)
+        schedule = economics.get_realization_schedule(product)
+        total_bookings = row["projected_bookings"]
+
+        for delay, prob in schedule.items():
+            booking_month = month + int(delay)
+            rows.append({
+                "sao_month": month,
+                "booking_month": booking_month,
+                "segment_key": seg_key,
+                "product": product,
+                "delay_months": int(delay),
+                "probability": prob,
+                "sao_bookings": total_bookings,
+                "realized_bookings": total_bookings * prob,
+                "in_window": booking_month <= horizon,
+            })
+    return pd.DataFrame(rows)
+
+
 def prepare_recovery_inputs(
     targets: pd.DataFrame,
     capacity: pd.DataFrame,
@@ -200,7 +244,7 @@ def main() -> None:
     print(f"\n[7/{total_stages}] Validating results...")
     validator = ValidationEngine(config)
     validation = validator.validate(results, targets=targets, capacity=capacity)
-    overall_pass = validation.get("overall_pass", False) if isinstance(validation, dict) else False
+    overall_pass = validation.get("passed", False) if isinstance(validation, dict) else False
     print(f"  Validation: {'PASS' if overall_pass else 'FAIL'}")
 
     # ── Stage 8: Recovery analysis ──────────────────────────────────────
@@ -250,6 +294,15 @@ def main() -> None:
     waterfall = build_monthly_waterfall(targets, capacity, results)
     waterfall.to_csv(version_dir / "monthly_waterfall.csv", index=False)
 
+    # Cash cycle waterfall (conditional on cash_cycle being enabled)
+    cash_cycle_cfg = config.get("economics.cash_cycle", {})
+    cash_cycle_enabled = (
+        isinstance(cash_cycle_cfg, dict) and cash_cycle_cfg.get("enabled", False)
+    )
+    if cash_cycle_enabled:
+        waterfall_cc = build_cashcycle_waterfall(results, economics, config)
+        waterfall_cc.to_csv(version_dir / "cashcycle_waterfall.csv", index=False)
+
     # ── Final summary ───────────────────────────────────────────────────
     print(f"\nVersion {version_id} saved to {version_dir}/")
     print(f"\n  Files:")
@@ -263,12 +316,22 @@ def main() -> None:
     print(f"    validation_report.json   Validation check results")
     print(f"    recovery_analysis.json   Recovery & stretch analysis")
     print(f"    monthly_waterfall.csv    Consolidated month-by-month view")
+    if cash_cycle_enabled:
+        print(f"    cashcycle_waterfall.csv   Cash cycle booking realization waterfall")
 
     print(f"\n  Key Metrics:")
     print(f"    Annual target:       ${targets['target_revenue'].sum():,.0f}")
     print(f"    Projected bookings:  ${total_bookings:,.0f}")
     print(f"    Total SAOs:          {total_saos:,.0f}")
     print(f"    Validation:          {'PASS' if overall_pass else 'FAIL'}")
+
+    if "in_window_bookings" in results.columns and cash_cycle_enabled:
+        in_window_total = results["in_window_bookings"].sum()
+        deferred_total = results["deferred_bookings"].sum()
+        in_window_pct = in_window_total / total_bookings * 100 if total_bookings > 0 else 0
+        print(f"\n  Cash Cycle:")
+        print(f"    In-window bookings:  ${in_window_total:,.0f} ({in_window_pct:.1f}%)")
+        print(f"    Deferred bookings:   ${deferred_total:,.0f} ({100 - in_window_pct:.1f}%)")
 
     print("\n" + "=" * 70)
     print("PIPELINE COMPLETE")

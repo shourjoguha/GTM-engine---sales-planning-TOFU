@@ -1,0 +1,199 @@
+dimensions:
+  product:
+    enabled: true
+    values:
+    - CM
+    - EOR
+    - Payroll
+  channel:
+    enabled: true
+    values:
+    - Marketing
+    - Outbound
+    - Partner
+  region:
+    enabled: false
+    values:
+    - EMEA
+    - AMER
+    - APAC
+  segment:
+    enabled: false
+    values:
+    - SMB
+    - Mid-Market
+    - Enterprise
+  deal_type:
+    enabled: false
+    values:
+    - New
+    - Expansion
+targets:
+  annual_target: 188000000
+  growth_rate: 0.5
+  target_source: growth
+  prior_year_actuals: 125000000
+  period_type: monthly
+  seasonality_weights:
+    month_1: 0.055
+    month_2: 0.065
+    month_3: 0.07
+    month_4: 0.095
+    month_5: 0.075
+    month_6: 0.08
+    month_7: 0.095
+    month_8: 0.078
+    month_9: 0.085
+    month_10: 0.105
+    month_11: 0.102
+    month_12: 0.095
+  planning_mode: full_year
+  locked_months: []
+  actuals_file: null
+allocation:
+  objective:
+    metric: bookings
+    direction: maximize
+    pipeline_to_bookings_ratio: 0.4
+  constraints:
+    share_floor: 0.03
+    share_ceiling: 0.4
+  optimizer_mode: solver
+economics:
+  use_calibration: false
+  baseline:
+    aggregation: median
+    grain: segment
+    source: actuals
+  default_decay:
+    asp:
+      function: exponential
+      rate: 0.001
+      threshold: 340
+      floor_multiplier: 0.75
+    win_rate:
+      function: linear
+      rate: 0.005
+      threshold: 260
+      floor_multiplier: 0.8
+  calibration:
+    deal_data_file: data/dummy/deal_level_data.csv
+    min_deals_for_fit: 5
+    fit_function: exponential
+  confidence:
+    high_threshold: 6
+    medium_threshold: 3
+    fallback_hierarchy:
+    - sub_segment
+    - segment
+    - product
+    - global
+    default_fallback_multiplier: 0.8
+  cash_cycle:
+    enabled: true
+    grain: product
+    default_distribution:
+      0: 0.3
+      1: 0.4
+      2: 0.2
+      3: 0.1
+    product_overrides:
+      EOR:
+        0: 0.1
+        1: 0.3
+        2: 0.4
+        3: 0.2
+      CM:
+        0: 0.4
+        1: 0.35
+        2: 0.15
+        3: 0.1
+      Payroll:
+        0: 0.5
+        1: 0.3
+        2: 0.2
+    planning_horizon_months: 12
+ae_model:
+  starting_hc: 100
+  productivity_per_ae: 45
+  hiring_plan:
+  - count: 25
+    start_month: 1
+  - count: 25
+    start_month: 2
+  - count: 5
+    start_month: 4
+  - count: 6
+    start_month: 6
+  ramp:
+    duration_days: 45
+    velocity: linear
+  mentoring:
+    overhead_pct_per_new_hire: 0.05
+    max_mentees_per_ae: 3
+    warning_threshold: 0.25
+  shrinkage:
+    pto_pct: 0.08
+    admin_pct: 0.05
+    enablement_base_pct: 0.03
+    enablement_scaling: fixed
+    enablement_max_pct: 0.05
+  attrition:
+    annual_rate: 0.1
+    backfill_delay_months: 1
+  stretch_threshold: 1.2
+what_if_scenarios:
+- name: Q2 attrition spike
+  enabled: false
+  description: 3 AEs leave in April, 2 more in May. Backfill delayed to 3 months.
+  perturbations:
+    ae_headcount_change:
+      month_4: -3
+      month_5: -2
+    backfill_delay_months: 0
+- name: EOR pricing pressure
+  enabled: false
+  description: Competitive pressure forces EOR ASP down 15%, win rates down 10%.
+  perturbations:
+    asp_multiplier:
+      EOR: 0.85
+    win_rate_multiplier:
+      EOR: 0.9
+- name: Marketing budget cut
+  enabled: false
+  description: Marketing budget reduced, lead volume drops 30%, ceiling reduced.
+  perturbations:
+    channel_share_ceiling:
+      Marketing: 0.25
+    lead_volume_multiplier:
+      Marketing: 0.7
+- name: Aggressive hiring freeze
+  enabled: false
+  description: Q3 and Q4 hiring tranches cancelled due to budget constraints.
+  perturbations:
+    cancel_tranches:
+    - 3
+    - 4
+- name: New market entry (APAC)
+  enabled: false
+  description: APAC launch with lower initial performance. 20 AEs dedicated.
+  perturbations:
+    add_region: APAC
+    region_performance_multiplier:
+      APAC: 0.6
+    ae_headcount_change:
+      month_6: 20
+system:
+  output_dir: versions
+  results_format: csv
+  log_level: info
+  tolerance: 0.001
+  revenue_tolerance: 0.01
+  solver:
+    method: SLSQP
+    max_iterations: 1000
+    convergence_tolerance: 1e-8
+  supersized_deal_threshold: 3.0
+  low_confidence_threshold: 20.0
+  confidence_risk_low_max_pct: 5
+  confidence_risk_medium_max_pct: 20

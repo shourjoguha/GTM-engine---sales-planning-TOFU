@@ -253,6 +253,66 @@ class ConfigManager:
         if annual_target is not None and annual_target <= 0:
             raise ValueError(f"Annual target must be positive, got {annual_target}")
 
+        # Validate cash_cycle config (if present and enabled)
+        cash_cycle = self.get('economics.cash_cycle', {})
+        if isinstance(cash_cycle, dict) and cash_cycle.get('enabled', False):
+            tolerance = self.get('system.tolerance', 0.001)
+
+            # default_distribution must exist and sum to 1.0
+            default_dist = cash_cycle.get('default_distribution')
+            if not default_dist or not isinstance(default_dist, dict):
+                raise ValueError(
+                    "economics.cash_cycle.default_distribution is required when cash_cycle is enabled"
+                )
+            dist_sum = sum(default_dist.values())
+            if abs(dist_sum - 1.0) > tolerance:
+                raise ValueError(
+                    f"cash_cycle.default_distribution sums to {dist_sum}, expected 1.0 "
+                    f"(tolerance: {tolerance})"
+                )
+            # All delay keys must be non-negative integers
+            for key in default_dist:
+                if not isinstance(key, int) or key < 0:
+                    raise ValueError(
+                        f"cash_cycle.default_distribution keys must be non-negative integers, "
+                        f"got {key!r}"
+                    )
+
+            # Validate each product_overrides entry sums to 1.0
+            product_overrides = cash_cycle.get('product_overrides', {})
+            for product, dist in product_overrides.items():
+                if not isinstance(dist, dict):
+                    raise ValueError(
+                        f"cash_cycle.product_overrides[{product}] must be a dict, "
+                        f"got {type(dist).__name__}"
+                    )
+                override_sum = sum(dist.values())
+                if abs(override_sum - 1.0) > tolerance:
+                    raise ValueError(
+                        f"cash_cycle.product_overrides[{product}] sums to {override_sum}, "
+                        f"expected 1.0 (tolerance: {tolerance})"
+                    )
+                for key in dist:
+                    if not isinstance(key, int) or key < 0:
+                        raise ValueError(
+                            f"cash_cycle.product_overrides[{product}] keys must be "
+                            f"non-negative integers, got {key!r}"
+                        )
+
+            # grain must be a valid, enabled dimension
+            grain = cash_cycle.get('grain', 'product')
+            dimensions = self.get('dimensions', {})
+            if grain not in dimensions:
+                raise ValueError(
+                    f"cash_cycle.grain '{grain}' is not a configured dimension"
+                )
+            grain_config = dimensions.get(grain, {})
+            if not isinstance(grain_config, dict) or not grain_config.get('enabled', False):
+                raise ValueError(
+                    f"cash_cycle.grain '{grain}' refers to a disabled dimension. "
+                    f"Enable it in dimensions.{grain}.enabled first."
+                )
+
 
     def to_dict(self) -> Dict[str, Any]:
         """

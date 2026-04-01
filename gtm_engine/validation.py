@@ -108,6 +108,12 @@ class ValidationEngine:
             checks.append(self._check_target_alignment(allocation_results, targets))
             checks.append(self._check_confidence_coverage(allocation_results))
 
+            # Cash cycle: verify in-window bookings meet annual target
+            if "in_window_bookings" in allocation_results.columns:
+                checks.append(self._check_in_window_target_alignment(
+                    allocation_results, targets
+                ))
+
         # Aggregate result
         all_passed = all(c["passed"] for c in checks)
 
@@ -401,6 +407,83 @@ class ValidationEngine:
                 "total_projected": total_projected,
                 "total_target": total_target,
                 "rel_error_pct": rel_error * 100,
+            },
+        }
+
+    def _check_in_window_target_alignment(
+        self,
+        results: pd.DataFrame,
+        targets: pd.DataFrame,
+    ) -> Dict[str, Any]:
+        """
+        Verify that in-window bookings (bookings landing within planning horizon)
+        meet the annual target. Only runs when cash_cycle is enabled.
+
+        Args:
+            results: Allocation results with 'in_window_bookings' column.
+            targets: Targets DataFrame with 'target_bookings' or 'target_revenue' column.
+
+        Returns:
+            Dict with check result.
+        """
+        check_name = "In-Window Target Alignment (Cash Cycle)"
+
+        if "in_window_bookings" not in results.columns:
+            return {
+                "name": check_name,
+                "passed": True,
+                "message": "Cash cycle not enabled; skipping.",
+                "details": {},
+            }
+
+        target_col = "target_bookings" if "target_bookings" in targets.columns else "target_revenue"
+        if target_col not in targets.columns:
+            return {
+                "name": check_name,
+                "passed": False,
+                "message": "Missing target column in targets DataFrame.",
+                "details": {},
+            }
+
+        total_in_window = results["in_window_bookings"].sum()
+        total_deferred = results["deferred_bookings"].sum() if "deferred_bookings" in results.columns else 0
+        total_target = targets[target_col].sum()
+        total_bookings = results["projected_bookings"].sum()
+
+        if total_target > 0:
+            rel_error = (total_target - total_in_window) / total_target
+            # Pass if in-window bookings are within tolerance of target (allow slight miss)
+            passed = rel_error <= self.revenue_tolerance
+        else:
+            passed = True
+            rel_error = 0.0
+
+        in_window_pct = (total_in_window / total_bookings * 100) if total_bookings > 0 else 0
+
+        if passed:
+            message = (
+                f"OK: In-window bookings ${total_in_window:,.0f} "
+                f"meets target ${total_target:,.0f}. "
+                f"Deferred: ${total_deferred:,.0f} ({100 - in_window_pct:.1f}% of total)."
+            )
+        else:
+            message = (
+                f"WARN: In-window bookings ${total_in_window:,.0f} "
+                f"below target ${total_target:,.0f} (shortfall: {rel_error*100:.1f}%). "
+                f"Deferred: ${total_deferred:,.0f} ({100 - in_window_pct:.1f}% of total)."
+            )
+
+        return {
+            "name": check_name,
+            "passed": passed,
+            "message": message,
+            "details": {
+                "total_in_window_bookings": total_in_window,
+                "total_deferred_bookings": total_deferred,
+                "total_bookings": total_bookings,
+                "total_target": total_target,
+                "in_window_pct": in_window_pct,
+                "shortfall_pct": rel_error * 100,
             },
         }
 

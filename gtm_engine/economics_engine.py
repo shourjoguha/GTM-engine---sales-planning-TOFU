@@ -328,6 +328,119 @@ class EconomicsEngine:
                 self._base_win_rate_values[seg_key] = values['win_rate']
         self._baselines_loaded = True
 
+    # ------------------------------------------------------------------
+    # Cash Cycle Methods
+    # ------------------------------------------------------------------
+
+    def get_realization_schedule(self, product: str) -> Dict[int, float]:
+        """
+        Get the cash cycle probability distribution for a product.
+
+        Returns a mapping of {delay_months: probability} describing when
+        SAOs for this product convert to bookings.
+
+        Lookup chain:
+            1. cash_cycle.product_overrides.<product>
+            2. cash_cycle.default_distribution
+            3. {0: 1.0} if cash_cycle is disabled or absent
+
+        Args:
+            product: Product name (e.g., "EOR", "CM", "Payroll")
+
+        Returns:
+            Dict[int, float]: {delay_months: probability}, summing to 1.0
+        """
+        cash_cycle = self.config.get("economics.cash_cycle", {})
+        if not isinstance(cash_cycle, dict) or not cash_cycle.get("enabled", False):
+            return {0: 1.0}
+
+        # Check product-specific override
+        overrides = cash_cycle.get("product_overrides", {})
+        if product in overrides:
+            return dict(overrides[product])
+
+        # Fall back to default distribution
+        default_dist = cash_cycle.get("default_distribution", {0: 1.0})
+        return dict(default_dist)
+
+    def get_in_window_factor(self, product: str, month: int) -> float:
+        """
+        Compute the fraction of bookings from SAOs in `month` that land
+        within the planning horizon.
+
+        For each (delay, probability) in the product's realization schedule,
+        if month + delay <= planning_horizon_months, that probability counts
+        as "in-window".
+
+        Example (EOR: {0: 0.10, 1: 0.30, 2: 0.40, 3: 0.20}):
+            month 10 → booking months 10,11,12,13 → in-window: 10,11,12 → factor = 0.80
+            month 11 → booking months 11,12,13,14 → in-window: 11,12    → factor = 0.40
+            month 12 → booking months 12,13,14,15 → in-window: 12       → factor = 0.10
+
+        Args:
+            product: Product name (e.g., "EOR")
+            month: Planning month (1-12)
+
+        Returns:
+            float: Fraction of bookings landing in-window [0.0, 1.0]
+        """
+        schedule = self.get_realization_schedule(product)
+        cash_cycle = self.config.get("economics.cash_cycle", {})
+        horizon = (cash_cycle.get("planning_horizon_months", 12)
+                   if isinstance(cash_cycle, dict) else 12)
+
+        in_window = 0.0
+        for delay, probability in schedule.items():
+            booking_month = month + int(delay)
+            if booking_month <= horizon:
+                in_window += probability
+        return in_window
+
+    def get_deferred_factor(self, product: str, month: int) -> float:
+        """
+        Compute the fraction of bookings from SAOs in `month` that spill
+        beyond the planning horizon (deferred bookings).
+
+        Simply 1.0 - get_in_window_factor(product, month).
+
+        Args:
+            product: Product name
+            month: Planning month (1-12)
+
+        Returns:
+            float: Fraction of bookings deferred beyond horizon [0.0, 1.0]
+        """
+        return 1.0 - self.get_in_window_factor(product, month)
+
+    def _extract_product_from_segment(self, segment_key: str) -> str:
+        """
+        Extract the product component from a segment key.
+
+        Uses the active dimensions list to find which position corresponds
+        to "product" in the dot-separated segment key.
+
+        Args:
+            segment_key: e.g., "EOR.Marketing" or "CM.Outbound"
+
+        Returns:
+            str: Product name (e.g., "EOR", "CM")
+        """
+        # Get active dimensions to find product position
+        active_dims = self.config.get("dimensions", {})
+        active_dim_names = [
+            dim_name for dim_name, dim_cfg in active_dims.items()
+            if isinstance(dim_cfg, dict) and dim_cfg.get("enabled", False)
+        ]
+
+        parts = segment_key.split(".")
+        if "product" in active_dim_names:
+            idx = active_dim_names.index("product")
+            if idx < len(parts):
+                return parts[idx]
+
+        # Fallback: assume product is the first component
+        return parts[0] if parts else segment_key
+
     def set_base_value(self, segment: str, metric: str, value: float) -> None:
         """
         Set the base (non-decayed) value for a segment metric.
