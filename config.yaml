@@ -344,7 +344,7 @@ what_if_scenarios:
     enabled: false
     description: "Q3 and Q4 hiring tranches cancelled due to budget constraints."
     perturbations:
-      cancel_tranches: [3, 4]                   # Cancel the 3rd and 4th hiring tranches
+      cancel_tranches: [2, 3]                   # Cancel the 3rd and 4th hiring tranches (0-indexed)
 
   - name: "New market entry (APAC)"
     enabled: false

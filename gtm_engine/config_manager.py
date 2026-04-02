@@ -190,6 +190,28 @@ class ConfigManager:
 
         return new_manager
 
+    @classmethod
+    def from_dict(cls, config_dict: dict) -> 'ConfigManager':
+        """
+        Create a ConfigManager from a plain dictionary.
+
+        Used by the what-if engine and adjustment mode to construct a
+        ConfigManager from a perturbed config dict without requiring a
+        YAML file on disk.
+
+        Args:
+            config_dict: Plain configuration dictionary.
+
+        Returns:
+            ConfigManager instance backed by a deep copy of the dict.
+        """
+        import copy
+
+        instance = cls.__new__(cls)
+        instance._config = copy.deepcopy(config_dict)
+        instance.validate()
+        instance._active_dimensions = instance._compute_active_dimensions()
+        return instance
 
     def validate(self) -> None:
         """
