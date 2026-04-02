@@ -147,7 +147,8 @@ class TargetGenerator:
                 weights[month] = float(weight)
         else:
             # For quarterly mode: aggregate monthly weights into quarterly
-            # We'll compute this on-the-fly when needed
+            # THIS IS A DIRECT SUM FOR NOW ( NO sophistication)
+                # manually adjust in config -> the seasonality weights for months in each quarter for planning tot ake this effect
             for month in range(1, 13):
                 key = f"targets.seasonality_weights.month_{month}"
                 weight = self.config.get(key, None)
