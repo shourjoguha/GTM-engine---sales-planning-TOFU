@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Charts Viewer Test</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <style>
+    body {
+      padding: 20px;
+    }
+    .test-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .test-section {
+      margin-bottom: 40px;
+    }
+    .test-title {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .test-actions {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .test-result {
+      padding: 16px;
+      background: #f9fafb;
+      border-radius: 8px;
+      margin-top: 12px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    .test-result.success {
+      background: #ecfdf5;
+      border: 1px solid #10b981;
+    }
+    .test-result.error {
+      background: #fef2f2;
+      border: 1px solid #ef4444;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <h1>Charts Viewer Test Suite</h1>
+    <p>This page tests the Charts Viewer functionality independently.</p>
+
+    <!-- Tab Structure -->
+    <div class="tab-bar" id="tabBar">
+      <button class="tab-btn active" data-tab="config" data-hash="#config">
+        Configuration
+      </button>
+      <button class="tab-btn" data-tab="charts" data-hash="#charts">
+        Reports & Charts
+      </button>
+    </div>
+
+    <!-- Tab Panels -->
+    <div class="tab-content" id="configPanel">
+      <div class="test-section">
+        <h2 class="test-title">Test Controls</h2>
+        <div class="test-actions">
+          <button class="btn btn-primary" id="testLoadVersions">Test: Load Versions</button>
+          <button class="btn btn-secondary" id="testDispatchPlanComplete">Test: Dispatch Plan Complete</button>
+          <button class="btn btn-secondary" id="testSwitchToCharts">Test: Switch to Charts Tab</button>
+        </div>
+        <div id="testResults" class="test-result">
+          Ready to run tests...
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content hidden" id="chartsPanel">
+      <div class="panel-placeholder">
+        <div class="placeholder-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+        </div>
+        <h3>Reports & Charts</h3>
+        <p>View your GTM planning analytics and visualizations</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/api_client.js"></script>
+  <script src="js/loading_overlay.js"></script>
+  <script src="js/tab_manager.js"></script>
+  <script src="js/config_form.js"></script>
+  <script src="js/chart_viewer.js"></script>
+
+  <script>
+    // Test utilities
+    function log_test_result(message, success = true) {
+      const resultDiv = document.getElementById('testResults');
+      resultDiv.textContent = message;
+      resultDiv.className = 'test-result ' + (success ? 'success' : 'error');
+    }
+
+    function log(message) {
+      console.log('[Test]', message);
+      const resultDiv = document.getElementById('testResults');
+      resultDiv.textContent = message + '\n' + resultDiv.textContent;
+    }
+
+    // Test: Load versions
+    document.getElementById('testLoadVersions').addEventListener('click', async () => {
+      log('Testing: Load versions from API...');
+      try {
+        const response = await fetch('/api/versions');
+        const data = await response.json();
+        log(`✓ Versions loaded: ${data.versions?.length || 0} versions found`);
+        if (data.versions && data.versions.length > 0) {
+          data.versions.forEach(v => log(`  - ${v.id}: ${new Date(v.created * 1000).toLocaleString()}`));
+        }
+        log_test_result('✓ Successfully loaded ' + (data.versions?.length || 0) + ' versions', true);
+      } catch (error) {
+        log('✗ Failed to load versions: ' + error.message);
+        log_test_result('✗ Failed to load versions: ' + error.message, false);
+      }
+    });
+
+    // Test: Dispatch plan complete event
+    document.getElementById('testDispatchPlanComplete').addEventListener('click', () => {
+      log('Testing: Dispatch plan complete event...');
+      const event = new CustomEvent('plancomplete', {
+        detail: {
+          version_id: 'v016',
+          chart_server_url: 'http://127.0.0.1:8765/',
+          summary: { test: true }
+        },
+        bubbles: true
+      });
+      document.dispatchEvent(event);
+      log('✓ Plan complete event dispatched');
+      log_test_result('✓ Plan complete event dispatched successfully', true);
+    });
+
+    // Test: Switch to charts tab
+    document.getElementById('testSwitchToCharts').addEventListener('click', () => {
+      log('Testing: Switch to charts tab...');
+      if (typeof TabManager !== 'undefined') {
+        TabManager.switch_tab('charts');
+        log('✓ Switched to charts tab');
+        log_test_result('✓ Successfully switched to charts tab', true);
+      } else {
+        log('✗ TabManager not available');
+        log_test_result('✗ TabManager not available', false);
+      }
+    });
+
+    // Listen for chart viewer events
+    document.addEventListener('plancomplete', (event) => {
+      log('Chart Viewer received plan complete event:');
+      log('  - version_id: ' + event.detail.version_id);
+      log('  - chart_server_url: ' + event.detail.chart_server_url);
+    });
+
+    document.addEventListener('tabchange', (event) => {
+      log('Tab changed to: ' + event.detail.tab);
+    });
+
+    log('Test suite loaded. Click buttons to run tests.');
+  </script>
+</body>
+</html>

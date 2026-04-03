@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Loading Overlay Test</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #f9fafb;
+      color: #111827;
+      padding: 40px;
+    }
+
+    .test-container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    p {
+      font-size: 16px;
+      color: #6b7280;
+      margin-bottom: 32px;
+    }
+
+    .test-section {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .test-section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 15px;
+      font-weight: 500;
+      font-family: inherit;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    button.primary {
+      background: #4f46e5;
+      color: white;
+    }
+
+    button.primary:hover {
+      background: #4338ca;
+    }
+
+    button.secondary {
+      background: white;
+      color: #374151;
+      border: 1px solid #d1d5db;
+    }
+
+    button.secondary:hover {
+      background: #f9fafb;
+      border-color: #9ca3af;
+    }
+
+    button.danger {
+      background: #ef4444;
+      color: white;
+    }
+
+    button.danger:hover {
+      background: #dc2626;
+    }
+
+    .status-display {
+      background: #1f2937;
+      color: #f9fafb;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 14px;
+      margin-top: 16px;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .code-example {
+      background: #f3f4f6;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 13px;
+      margin-top: 8px;
+      color: #374151;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <h1>Loading Overlay Test Page</h1>
+    <p>Test the loading overlay system with various scenarios</p>
+
+    <!-- Basic Tests -->
+    <div class="test-section">
+      <h2>Basic Functionality</h2>
+      <div class="button-group">
+        <button class="primary" onclick="testShow()">Show Overlay</button>
+        <button class="secondary" onclick="testHide()">Hide Overlay</button>
+        <button class="danger" onclick="testComplete()">Complete</button>
+      </div>
+      <div class="code-example">
+        LoadingOverlay.show();
+        LoadingOverlay.hide();
+        LoadingOverlay.complete();
+      </div>
+    </div>
+
+    <!-- Progress Tests -->
+    <div class="test-section">
+      <h2>Progress Control</h2>
+      <div class="button-group">
+        <button class="primary" onclick="testProgressSimulation()">With Simulation</button>
+        <button class="secondary" onclick="testManualProgress()">Manual Progress</button>
+        <button class="secondary" onclick="testRandomProgress()">Random Progress</button>
+      </div>
+      <div class="code-example">
+        LoadingOverlay.show({ simulate_progress: true });
+        LoadingOverlay.update_progress(50);
+      </div>
+    </div>
+
+    <!-- Status Tests -->
+    <div class="test-section">
+      <h2>Status Messages</h2>
+      <div class="button-group">
+        <button class="primary" onclick="testStatusUpdates()">Status Updates</button>
+        <button class="secondary" onclick="testCustomStatus()">Custom Status</button>
+      </div>
+      <div class="code-example">
+        LoadingOverlay.update_status('Processing...');
+      </div>
+    </div>
+
+    <!-- Custom Animation Test -->
+    <div class="test-section">
+      <h2>Custom Animation</h2>
+      <div class="button-group">
+        <button class="primary" onclick="testDefaultSpinner()">Default Spinner</button>
+        <button class="secondary" onclick="testCustomSpinner()">Custom Spinner</button>
+      </div>
+      <div class="code-example">
+        LoadingOverlay.set_custom_spinner(svg_content);
+      </div>
+    </div>
+
+    <!-- Integration Test -->
+    <div class="test-section">
+      <h2>Form Submission Simulation</h2>
+      <div class="button-group">
+        <button class="primary" onclick="testFormSubmission()">Simulate Submit</button>
+      </div>
+      <div class="code-example">
+        Simulates config form submission with loading overlay
+      </div>
+    </div>
+
+    <!-- Status Display -->
+    <div class="test-section">
+      <h2>Current State</h2>
+      <div class="button-group">
+        <button class="secondary" onclick="displayState()">Refresh State</button>
+      </div>
+      <div class="status-display" id="statusDisplay">
+        Click "Refresh State" to see current loading overlay state
+      </div>
+    </div>
+  </div>
+
+  <!-- Include Loading Overlay CSS and JS -->
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="js/loading_overlay.js"></script>
+
+  <script>
+    // Test functions
+
+    function testShow() {
+      LoadingOverlay.show({
+        status: 'Initializing...',
+        simulate_progress: false
+      });
+      displayState();
+    }
+
+    function testHide() {
+      LoadingOverlay.hide();
+      displayState();
+    }
+
+    function testComplete() {
+      LoadingOverlay.complete(() => {
+        console.log('Loading completed!');
+      });
+      displayState();
+    }
+
+    function testProgressSimulation() {
+      LoadingOverlay.show({
+        status: 'Starting...',
+        simulate_progress: true,
+        simulation_speed: 100
+      });
+      displayState();
+    }
+
+    function testManualProgress() {
+      LoadingOverlay.show({
+        status: 'Manual mode...',
+        simulate_progress: false
+      });
+
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += 10;
+        LoadingOverlay.update_progress(progress);
+        displayState();
+
+        if (progress >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            LoadingOverlay.complete();
+            displayState();
+          }, 500);
+        }
+      }, 500);
+    }
+
+    function testRandomProgress() {
+      LoadingOverlay.show({
+        status: 'Random progress...',
+        simulate_progress: false
+      });
+
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += Math.random() * 15 + 5;
+        if (progress > 100) progress = 100;
+        LoadingOverlay.update_progress(progress);
+        displayState();
+
+        if (progress >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            LoadingOverlay.complete();
+            displayState();
+          }, 500);
+        }
+      }, 300);
+    }
+
+    function testStatusUpdates() {
+      LoadingOverlay.show({
+        status: 'Initializing...',
+        simulate_progress: false
+      });
+
+      const statuses = [
+        'Validating configuration...',
+        'Generating plan...',
+        'Running optimizer...',
+        'Calculating allocations...',
+        'Generating reports...',
+        'Completing...'
+      ];
+
+      let index = 0;
+      const interval = setInterval(() => {
+        if (index < statuses.length) {
+          LoadingOverlay.update_status(statuses[index]);
+          displayState();
+          index++;
+        } else {
+          clearInterval(interval);
+          LoadingOverlay.complete();
+          displayState();
+        }
+      }, 1000);
+    }
+
+    function testCustomStatus() {
+      const customStatus = prompt('Enter custom status message:', 'Processing your request...');
+      if (customStatus) {
+        LoadingOverlay.show({
+          status: customStatus,
+          simulate_progress: false
+        });
+        displayState();
+      }
+    }
+
+    function testDefaultSpinner() {
+      // Reset to default spinner
+      const defaultSpinner = `
+        <svg viewBox="0 0 50 50" class="spinner-svg">
+          <circle class="spinner-bg" cx="25" cy="25" r="20" fill="none" stroke="#e5e7eb" stroke-width="4" />
+          <circle class="spinner-path" cx="25" cy="25" r="20" fill="none" stroke="#4f46e5" stroke-width="4" stroke-linecap="round" stroke-dasharray="100" stroke-dashoffset="25" />
+        </svg>
+      `;
+      LoadingOverlay.set_custom_spinner(defaultSpinner);
+      alert('Default spinner restored!');
+    }
+
+    function testCustomSpinner() {
+      // Set custom spinner with different animation
+      const customSpinner = `
+        <svg viewBox="0 0 100 100" class="spinner-svg">
+          <circle cx="50" cy="50" r="40" stroke="#e5e7eb" stroke-width="8" fill="none"/>
+          <circle cx="50" cy="50" r="40" stroke="#4f46e5" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="188" stroke-dashoffset="47">
+            <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="1s" repeatCount="indefinite"/>
+          </circle>
+        </svg>
+      `;
+      LoadingOverlay.set_custom_spinner(customSpinner);
+      alert('Custom spinner set!');
+    }
+
+    function testFormSubmission() {
+      // Simulate form submission
+      LoadingOverlay.show({
+        status: 'Initializing...',
+        simulate_progress: true,
+        simulation_speed: 100
+      });
+
+      // Simulate backend processing
+      setTimeout(() => {
+        LoadingOverlay.complete(() => {
+          alert('Form submission complete! Would switch to charts tab now.');
+        });
+        displayState();
+      }, 5000);
+    }
+
+    function displayState() {
+      const state = LoadingOverlay.get_state();
+      const display = document.getElementById('statusDisplay');
+      display.textContent = JSON.stringify(state, null, 2);
+    }
+
+    // Initial state display
+    setTimeout(() => {
+      displayState();
+    }, 500);
+  </script>
+</body>
+</html>

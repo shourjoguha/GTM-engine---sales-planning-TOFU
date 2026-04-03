@@ -6,7 +6,15 @@ import sys
 import subprocess
 import tempfile
 import shutil
+import re
+import yaml
 from datetime import datetime
+import socket
+import threading
+import atexit
+import signal
+import time
+from http.server import ThreadingHTTPServer
 
 app = Flask(__name__)
 
@@ -15,165 +23,205 @@ DATA_DIR = PROJECT_ROOT / "data" / "raw"
 VERSIONS_DIR = PROJECT_ROOT / "versions"
 CONFIG_FILE = PROJECT_ROOT / "config.yaml"
 
+# Chart server management
+CHART_SERVERS = {}
+CHART_SERVER_START_PORT = 8765
+CHART_SERVER_LOCK = threading.Lock()
+
+# Import chart server components
+sys.path.insert(0, str(PROJECT_ROOT / "reportingCharts"))
+from run_charts import build_handler
+
+
+def find_available_port(start_port=CHART_SERVER_START_PORT):
+    """Find an available port starting from start_port"""
+    for port in range(start_port, start_port + 100):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('127.0.0.1', port))
+                return port
+        except OSError:
+            continue
+    raise RuntimeError("No available ports found for chart server")
+
+
+def start_chart_server_thread(version_id):
+    """Start chart server for a specific version in a daemon thread"""
+    version_dir = VERSIONS_DIR / version_id
+    if not version_dir.exists():
+        raise ValueError(f"Version directory not found: {version_dir}")
+    
+    port = find_available_port()
+    host = '127.0.0.1'
+    
+    handler_class = build_handler(version_dir)
+    server = ThreadingHTTPServer((host, port), handler_class)
+    
+    def run_server():
+        try:
+            server.serve_forever()
+        except Exception as e:
+            print(f"Chart server for {version_id} error: {e}")
+        finally:
+            with CHART_SERVER_LOCK:
+                if version_id in CHART_SERVERS:
+                    del CHART_SERVERS[version_id]
+    
+    # Start server in daemon thread
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+    
+    # Store server info
+    with CHART_SERVER_LOCK:
+        CHART_SERVERS[version_id] = {
+            'server': server,
+            'thread': server_thread,
+            'port': port,
+            'host': host,
+            'url': f'http://{host}:{port}/',
+            'version_id': version_id
+        }
+    
+    return port
+
+
+def stop_chart_server(version_id):
+    """Stop chart server for a specific version"""
+    with CHART_SERVER_LOCK:
+        if version_id not in CHART_SERVERS:
+            return False
+        
+        server_info = CHART_SERVERS[version_id]
+    
+    try:
+        # Shutdown the server
+        server_info['server'].shutdown()
+        # Wait for thread to finish with timeout
+        server_info['thread'].join(timeout=5)
+    except Exception as e:
+        print(f"Error stopping chart server for {version_id}: {e}")
+    finally:
+        # Always remove from dict
+        with CHART_SERVER_LOCK:
+            if version_id in CHART_SERVERS:
+                del CHART_SERVERS[version_id]
+        return True
+
+
+def cleanup_all_chart_servers():
+    """Stop all running chart servers"""
+    print("Cleaning up all chart servers...")
+    with CHART_SERVER_LOCK:
+        version_ids = list(CHART_SERVERS.keys())
+    
+    for version_id in version_ids:
+        stop_chart_server(version_id)
+    
+    print("Chart server cleanup complete")
+
+
+def kill_process_on_port(port):
+    current_pid = os.getpid()
+    try:
+        result = subprocess.run(
+            ["lsof", "-t", f"-i:{port}"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        pids = [
+            int(pid.strip())
+            for pid in result.stdout.splitlines()
+            if pid.strip().isdigit() and int(pid.strip()) != current_pid
+        ]
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                continue
+            except PermissionError:
+                continue
+        if pids:
+            time.sleep(0.3)
+            for pid in pids:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    continue
+                except PermissionError:
+                    continue
+    except Exception:
+        pass
+
+
+def read_bool_env(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def normalize_version_id(version_id):
+    if not version_id:
+        return version_id
+    normalized = str(version_id).strip()
+    if normalized.startswith('v'):
+        return normalized
+    if normalized.isdigit():
+        return f"v{int(normalized):03d}"
+    return normalized
+
+
+def parse_timestamp_to_epoch(value):
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        try:
+            return int(float(stripped))
+        except ValueError:
+            try:
+                return int(datetime.fromisoformat(stripped.replace('Z', '+00:00')).timestamp())
+            except ValueError:
+                return int(datetime.now().timestamp())
+    return int(datetime.now().timestamp())
+
+
+# Register cleanup on exit
+atexit.register(cleanup_all_chart_servers)
+
+
 @app.route('/')
 def index():
-    return render_template_string('''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GTM Planning Engine</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 50px auto; padding: 20px; }
-        h1 { color: #333; }
-        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-        .section { background: #f9f9f9; padding: 20px; border-radius: 8px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-        button { background: #007bff; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
-        button:hover { background: #0056b3; }
-        .result { margin-top: 20px; padding: 15px; background: #d4edda; border-radius: 4px; display: none; }
-        .error { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-top: 10px; }
-        .version-list { margin-top: 20px; }
-        .version-item { padding: 10px; margin: 5px 0; background: white; border-left: 3px solid #007bff; }
-        a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-    </style>
-</head>
-<body>
-    <h1>🎯 GTM Planning Engine</h1>
-    
-    <div class="container">
-        <div class="section">
-            <h2>Run New Plan</h2>
-            <form id="planForm">
-                <div class="form-group">
-                    <label for="description">Plan Description:</label>
-                    <input type="text" id="description" name="description" placeholder="e.g., Q3 2026 Forecast" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="annual_target">Annual Target ($):</label>
-                    <input type="number" id="annual_target" name="annual_target" value="188000000" step="1000000">
-                </div>
-                
-                <div class="form-group">
-                    <label for="mode">Mode:</label>
-                    <select id="mode" name="mode">
-                        <option value="full">Full Pipeline</option>
-                        <option value="what-if">What-If Scenario</option>
-                        <option value="adjustment">Mid-Cycle Adjustment</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="optimizer">Optimizer Mode:</label>
-                    <select id="optimizer" name="optimizer">
-                        <option value="greedy">Greedy (Fast)</option>
-                        <option value="solver">Solver (Precise)</option>
-                    </select>
-                </div>
-                
-                <button type="submit">Run Plan</button>
-            </form>
-            <div id="result" class="result"></div>
-            <div id="error" class="error" style="display:none;"></div>
-        </div>
-        
-        <div class="section">
-            <h2>Available Versions</h2>
-            <div id="versions" class="version-list">
-                <p>Loading versions...</p>
-            </div>
-            <div style="margin-top: 20px;">
-                <button onclick="loadVersions()">Refresh Versions</button>
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        async function loadVersions() {
-            try {
-                const response = await fetch('/api/versions');
-                const data = await response.json();
-                const container = document.getElementById('versions');
-                
-                if (data.versions.length === 0) {
-                    container.innerHTML = '<p>No versions found. Run a plan to create one.</p>';
-                    return;
-                }
-                
-                container.innerHTML = data.versions.map(v => `
-                    <div class="version-item">
-                        <strong>Version ${v.id}</strong>: ${v.description}<br>
-                        <small>Created: ${new Date(v.created * 1000).toLocaleString()}</small><br>
-                        <a href="/api/version/${v.id}/summary">Summary</a> | 
-                        <a href="/api/version/${v.id}/results">Results</a> |
-                        <a href="/viewer/${v.id}">View Charts</a>
-                    </div>
-                `).join('');
-            } catch (error) {
-                container.innerHTML = '<p class="error">Failed to load versions.</p>';
-            }
-        }
-        
-        document.getElementById('planForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const resultDiv = document.getElementById('result');
-            const errorDiv = document.getElementById('error');
-            
-            resultDiv.style.display = 'none';
-            errorDiv.style.display = 'none';
-            resultDiv.innerHTML = '<p>Running plan... This may take a few minutes.</p>';
-            resultDiv.style.display = 'block';
-            
-            const formData = {
-                description: document.getElementById('description').value,
-                annual_target: parseInt(document.getElementById('annual_target').value),
-                mode: document.getElementById('mode').value,
-                optimizer: document.getElementById('optimizer').value
-            };
-            
-            try {
-                const response = await fetch('/api/run-plan', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(formData)
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    resultDiv.innerHTML = `
-                        <h3>✅ Plan Completed Successfully!</h3>
-                        <p><strong>Version ID:</strong> ${data.version_id}</p>
-                        <p><strong>Bookings:</strong> $${data.summary.total_bookings?.toLocaleString() || 'N/A'}</p>
-                        <p><strong>SAOs:</strong> ${data.summary.total_saos?.toLocaleString() || 'N/A'}</p>
-                        <p><strong>Validation:</strong> ${data.validation_passed ? '✅ PASS' : '❌ FAIL'}</p>
-                        <a href="/viewer/${data.version_id}">View Results</a>
-                    `;
-                    loadVersions();
-                } else {
-                    throw new Error(data.error || 'Unknown error');
-                }
-            } catch (error) {
-                resultDiv.style.display = 'none';
-                errorDiv.textContent = 'Error: ' + error.message;
-                errorDiv.style.display = 'block';
-            }
-        });
-        
-        loadVersions();
-    </script>
-</body>
-</html>
-''')
+    return send_from_directory('frontend', 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('frontend', filename)
 
 @app.route('/health')
 def health():
     return jsonify({"status": "healthy", "service": "gtm-planning-engine"})
+
+@app.route('/api/config-schema', methods=['GET'])
+def get_config_schema():
+    """Returns structure of config.yaml for form generation"""
+    try:
+        with open(CONFIG_FILE) as f:
+            config = yaml.safe_load(f)
+        return jsonify(config)
+    except Exception as e:
+        return jsonify({"error": f"Failed to load config schema: {str(e)}"}), 500
+
+@app.route('/api/config/defaults', methods=['GET'])
+def get_config_defaults():
+    """Returns default config values for reset functionality"""
+    try:
+        with open(CONFIG_FILE) as f:
+            config = yaml.safe_load(f)
+        return jsonify(config)
+    except Exception as e:
+        return jsonify({"error": f"Failed to load config defaults: {str(e)}"}), 500
 
 @app.route('/api/versions', methods=['GET'])
 def list_versions():
@@ -189,7 +237,7 @@ def list_versions():
                     versions.append({
                         'id': version_id,
                         'description': summary.get('description', 'No description'),
-                        'created': int(summary.get('timestamp', datetime.now().timestamp()))
+                        'created': parse_timestamp_to_epoch(summary.get('timestamp'))
                     })
                 except:
                     pass
@@ -197,6 +245,7 @@ def list_versions():
 
 @app.route('/api/version/<version_id>/summary', methods=['GET'])
 def get_version_summary(version_id):
+    version_id = normalize_version_id(version_id)
     summary_file = VERSIONS_DIR / version_id / 'summary.json'
     if not summary_file.exists():
         return jsonify({"error": "Version not found"}), 404
@@ -208,6 +257,7 @@ def get_version_summary(version_id):
 
 @app.route('/api/version/<version_id>/results', methods=['GET'])
 def get_version_results(version_id):
+    version_id = normalize_version_id(version_id)
     results_file = VERSIONS_DIR / version_id / 'results.csv'
     if not results_file.exists():
         return jsonify({"error": "Results not found"}), 404
@@ -218,6 +268,7 @@ def get_version_results(version_id):
 
 @app.route('/api/version/<version_id>/download/<filename>')
 def download_version_file(version_id, filename):
+    version_id = normalize_version_id(version_id)
     version_dir = VERSIONS_DIR / version_id
     if not version_dir.exists():
         return jsonify({"error": "Version not found"}), 404
@@ -236,6 +287,7 @@ def run_plan():
         annual_target = data.get('annual_target', 188000000)
         mode = data.get('mode', 'full')
         optimizer = data.get('optimizer', 'greedy')
+        auto_start_charts = data.get('auto_start_charts', True)
         
         with open(CONFIG_FILE) as f:
             config_content = f.read()
@@ -268,8 +320,14 @@ def run_plan():
             version_id = None
             for line in result.stdout.split('\n'):
                 if 'Version' in line and 'saved to' in line:
-                    version_id = line.split()[1]
-                    break
+                    path_match = re.search(r"versions/(v\d+)", line)
+                    if path_match:
+                        version_id = path_match.group(1)
+                        break
+                    number_match = re.search(r"Version\s+(\d+)", line)
+                    if number_match:
+                        version_id = normalize_version_id(number_match.group(1))
+                        break
             
             if not version_id:
                 versions = sorted(VERSIONS_DIR.glob('v*'), key=lambda x: x.stat().st_mtime, reverse=True)
@@ -292,12 +350,36 @@ def run_plan():
                         validation = json.load(f)
                         validation_passed = validation.get('passed', False)
                 
-                return jsonify({
+                response = {
                     "version_id": version_id,
                     "summary": summary,
                     "validation_passed": validation_passed,
                     "stdout": result.stdout
-                })
+                }
+                
+                # Auto-start chart server if requested
+                if auto_start_charts:
+                    try:
+                        chart_port = start_chart_server_thread(version_id)
+                        with CHART_SERVER_LOCK:
+                            if version_id in CHART_SERVERS:
+                                response["charts"] = {
+                                    "port": chart_port,
+                                    "url": CHART_SERVERS[version_id]['url'],
+                                    "status": "started"
+                                }
+                            else:
+                                response["charts"] = {
+                                    "status": "failed",
+                                    "error": "Chart server did not start properly"
+                                }
+                    except Exception as e:
+                        response["charts"] = {
+                            "status": "failed",
+                            "error": str(e)
+                        }
+                
+                return jsonify(response)
             else:
                 return jsonify({
                     "error": "Could not determine version ID",
@@ -312,15 +394,138 @@ def run_plan():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/charts/server/<version_id>', methods=['POST'])
+def start_chart_server(version_id):
+    """Start chart server for specific version"""
+    try:
+        version_id = normalize_version_id(version_id)
+        version_dir = VERSIONS_DIR / version_id
+        if not version_dir.exists():
+            return jsonify({"error": f"Version {version_id} not found"}), 404
+        
+        # Check if server is already running
+        with CHART_SERVER_LOCK:
+            if version_id in CHART_SERVERS:
+                server_info = CHART_SERVERS[version_id]
+                return jsonify({
+                    "status": "already_running",
+                    "port": server_info['port'],
+                    "url": server_info['url']
+                })
+        
+        port = start_chart_server_thread(version_id)
+        
+        with CHART_SERVER_LOCK:
+            if version_id in CHART_SERVERS:
+                server_info = CHART_SERVERS[version_id]
+                return jsonify({
+                    "status": "started",
+                    "port": server_info['port'],
+                    "url": server_info['url'],
+                    "version_id": version_id
+                })
+            else:
+                return jsonify({
+                    "status": "failed",
+                    "error": "Chart server did not start properly"
+                }), 500
+                
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": f"Failed to start chart server: {str(e)}"}), 500
+
+
+@app.route('/api/charts/server/<version_id>', methods=['DELETE'])
+def stop_chart_server_route(version_id):
+    """Stop chart server for version"""
+    try:
+        version_id = normalize_version_id(version_id)
+        success = stop_chart_server(version_id)
+        if success:
+            return jsonify({
+                "status": "stopped",
+                "version_id": version_id
+            })
+        else:
+            return jsonify({
+                "status": "not_running",
+                "version_id": version_id
+            }), 404
+    except Exception as e:
+        return jsonify({"error": f"Failed to stop chart server: {str(e)}"}), 500
+
+
+@app.route('/api/charts/server/<version_id>/status')
+def chart_server_status(version_id):
+    """Check if chart server is running"""
+    try:
+        version_id = normalize_version_id(version_id)
+        with CHART_SERVER_LOCK:
+            if version_id in CHART_SERVERS:
+                server_info = CHART_SERVERS[version_id]
+                # Check if thread is alive
+                is_alive = server_info['thread'].is_alive()
+                if is_alive:
+                    return jsonify({
+                        "status": "running",
+                        "version_id": version_id,
+                        "port": server_info['port'],
+                        "url": server_info['url']
+                    })
+                else:
+                    # Clean up dead server entry
+                    del CHART_SERVERS[version_id]
+                    return jsonify({
+                        "status": "stopped",
+                        "version_id": version_id
+                    })
+            else:
+                return jsonify({
+                    "status": "not_found",
+                    "version_id": version_id
+                }), 404
+    except Exception as e:
+        return jsonify({"error": f"Failed to check chart server status: {str(e)}"}), 500
+
+
+@app.route('/api/charts/servers', methods=['GET'])
+def list_chart_servers():
+    """List all running chart servers"""
+    try:
+        with CHART_SERVER_LOCK:
+            servers = []
+            dead_servers = []
+            for version_id, server_info in list(CHART_SERVERS.items()):
+                is_alive = server_info['thread'].is_alive()
+                if is_alive:
+                    servers.append({
+                        "version_id": version_id,
+                        "port": server_info['port'],
+                        "url": server_info['url']
+                    })
+                else:
+                    # Collect dead servers for cleanup
+                    dead_servers.append(version_id)
+            
+            # Clean up dead server entries
+            for version_id in dead_servers:
+                del CHART_SERVERS[version_id]
+            
+            return jsonify({
+                "servers": servers,
+                "count": len(servers)
+            })
+    except Exception as e:
+        return jsonify({"error": f"Failed to list chart servers: {str(e)}"}), 500
+
 @app.route('/viewer/<version_id>')
 def viewer(version_id):
+    version_id = normalize_version_id(version_id)
     version_dir = VERSIONS_DIR / version_id
     if not version_dir.exists():
         return f"Version {version_id} not found", 404
-    
-    from reportingCharts.run_charts import build_index_html, build_handler
-    
-    handler_class = build_handler(version_dir)
     
     return render_template_string('''
 <!DOCTYPE html>
@@ -339,13 +544,47 @@ def viewer(version_id):
         <a href="/">← Back to Main</a>
         <a href="/api/version/{{ version_id }}/summary">Summary</a>
         <a href="/api/version/{{ version_id }}/download/results.csv">Download Results</a>
+        <a href="/api/charts/server/{{ version_id }}" target="_blank">Start Chart Server</a>
     </div>
-    <iframe src="/viewer-iframe/{{ version_id }}/"></iframe>
+    <div id="chart-server-container">
+        <p>Chart server status: <span id="chart-status">Checking...</span></p>
+    </div>
+    <script>
+        fetch('/api/charts/server/{{ version_id }}/status')
+            .then(r => r.json())
+            .then(data => {
+                const statusEl = document.getElementById('chart-status');
+                if (data.status === 'running') {
+                    statusEl.innerHTML = `<a href="${data.url}" target="_blank">View Charts (Port ${data.port})</a>`;
+                    const iframe = document.createElement('iframe');
+                    iframe.src = data.url;
+                    iframe.style.width = '100%';
+                    iframe.style.height = '800px';
+                    iframe.style.border = '1px solid #ddd';
+                    document.getElementById('chart-server-container').appendChild(iframe);
+                } else {
+                    statusEl.textContent = 'Not running - Click "Start Chart Server" to start';
+                }
+            })
+            .catch(err => {
+                document.getElementById('chart-status').textContent = 'Error checking status';
+            });
+    </script>
 </body>
 </html>
 ''', version_id=version_id)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8000))
+    try:
+        port = int(os.environ.get('PORT', 8000))
+    except (TypeError, ValueError):
+        port = 8000
     host = os.environ.get('HOST', '0.0.0.0')
-    app.run(host=host, port=port, debug=True)
+    debug_mode = read_bool_env('APP_DEBUG', False)
+    use_reloader = read_bool_env('APP_RELOADER', False)
+    dev_port_cleanup = read_bool_env('DEV_PORT_CLEANUP', True)
+    is_reloader_child = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
+    should_cleanup_port = port == 8000 and dev_port_cleanup and (not use_reloader or not is_reloader_child)
+    if should_cleanup_port:
+        kill_process_on_port(port)
+    app.run(host=host, port=port, debug=debug_mode, use_reloader=use_reloader)
