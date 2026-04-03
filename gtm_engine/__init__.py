@@ -52,6 +52,7 @@ from .recovery import RecoveryEngine
 # Analysis and persistence
 from .comparator import VersionComparator
 from .what_if import WhatIfEngine
+from .lever_analysis import LeverAnalysisEngine
 
 __all__ = [
     # Foundation
@@ -71,4 +72,5 @@ __all__ = [
     # Analysis and persistence
     "VersionComparator",
     "WhatIfEngine",
+    "LeverAnalysisEngine",
 ]

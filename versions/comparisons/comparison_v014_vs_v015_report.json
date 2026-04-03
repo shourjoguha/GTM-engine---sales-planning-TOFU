@@ -1,0 +1,198 @@
+{
+  "metric_diffs": [
+    {
+      "version_id": "v014",
+      "total_bookings": 177.4,
+      "total_pipeline": 576.7,
+      "total_saos": 57771,
+      "total_ae_hc": 154,
+      "productivity_per_ae": 375.14,
+      "bookings_vs_v1_pct": 0.0,
+      "saos_vs_v1_pct": 0.0,
+      "hc_vs_v1_pct": 0.0
+    },
+    {
+      "version_id": "v015",
+      "total_bookings": 177.4,
+      "total_pipeline": 576.7,
+      "total_saos": 57771,
+      "total_ae_hc": 154,
+      "productivity_per_ae": 375.14,
+      "bookings_vs_v1_pct": 0.0,
+      "saos_vs_v1_pct": 0.0,
+      "hc_vs_v1_pct": 0.0
+    }
+  ],
+  "allocation_shift": [
+    {
+      "segment": "CM.Marketing",
+      "v014": 0.03,
+      "v015": 0.03,
+      "shift_pct": 0.0
+    },
+    {
+      "segment": "CM.Outbound",
+      "v014": 0.03,
+      "v015": 0.03,
+      "shift_pct": 0.0
+    },
+    {
+      "segment": "CM.Partner",
+      "v014": 0.03,
+      "v015": 0.03,
+      "shift_pct": 0.0
+    },
+    {
+      "segment": "EOR.Marketing",
+      "v014": 0.369,
+      "v015": 0.369,
+      "shift_pct": 0.0
+    },
+    {
+      "segment": "EOR.Outbound",
+      "v014": 0.059,
+      "v015": 0.059,
+      "shift_pct": 0.0
+    },
+    {
+      "segment": "EOR.Partner",
+      "v014": 0.302,
+      "v015": 0.302,
+      "shift_pct": 0.0
+    },
+    {
+      "segment": "Payroll.Marketing",
+      "v014": 0.082,
+      "v015": 0.082,
+      "shift_pct": 0.0
+    },
+    {
+      "segment": "Payroll.Outbound",
+      "v014": 0.03,
+      "v015": 0.03,
+      "shift_pct": 0.0
+    },
+    {
+      "segment": "Payroll.Partner",
+      "v014": 0.067,
+      "v015": 0.067,
+      "shift_pct": 0.0
+    }
+  ],
+  "volatility_analysis": {
+    "v014": {
+      "std_dev": 2474253.18,
+      "cv": 0.167,
+      "max_min_ratio": 1.78,
+      "monthly_values": [
+        10312500.000000004,
+        12187500.000000004,
+        13125000.000000002,
+        17812500.000000007,
+        14062500.000000002,
+        15000000.000000004,
+        17812500.000000007,
+        14627203.669329248,
+        15937500.000000004,
+        18309823.276378024,
+        16354550.581537485,
+        11815683.078447117
+      ]
+    },
+    "v015": {
+      "std_dev": 2474253.18,
+      "cv": 0.167,
+      "max_min_ratio": 1.78,
+      "monthly_values": [
+        10312500.000000004,
+        12187500.000000004,
+        13125000.000000002,
+        17812500.000000007,
+        14062500.000000002,
+        15000000.000000004,
+        17812500.000000007,
+        14627203.669329248,
+        15937500.000000004,
+        18309823.276378024,
+        16354550.581537485,
+        11815683.078447117
+      ]
+    }
+  },
+  "concentration_risk": {
+    "v014": 0.246,
+    "v015": 0.246
+  },
+  "capacity_utilisation_variance": {
+    "v014": {
+      "variance": 684682.37,
+      "mean_utilisation": 4814.25,
+      "min_utilisation": 3196.19,
+      "max_utilisation": 5782.35
+    },
+    "v015": {
+      "variance": 684682.37,
+      "mean_utilisation": 4814.25,
+      "min_utilisation": 3196.19,
+      "max_utilisation": 5782.35
+    }
+  },
+  "stretch_exposure": {
+    "v014": {
+      "pct_quarters_stretched": 0.0,
+      "stretched_quarters": [],
+      "max_stretch_ratio": 1.09
+    },
+    "v015": {
+      "pct_quarters_stretched": 0.0,
+      "stretched_quarters": [],
+      "max_stretch_ratio": 1.09
+    }
+  },
+  "confidence_risk": {
+    "v014": {
+      "low_confidence_bookings": 0.0,
+      "low_confidence_pct": 0.0,
+      "risk_level": "Unknown"
+    },
+    "v015": {
+      "low_confidence_bookings": 0.0,
+      "low_confidence_pct": 0.0,
+      "risk_level": "Unknown"
+    }
+  },
+  "metrics_table": [
+    {
+      "version_id": "v014",
+      "total_bookings": 177357260.60569188,
+      "total_pipeline": 576747574.9446378,
+      "total_saos": 57771.008431906455,
+      "total_ae_hc": 154,
+      "avg_productivity_per_ae": 375.136418389003,
+      "monthly_volatility": 2474253.18,
+      "coefficient_of_variation": 0.167,
+      "max_min_ratio": 1.78,
+      "herfindahl_index": 0.246,
+      "capacity_utilisation_variance": 684682.37,
+      "stretch_exposure_pct": 0.0,
+      "confidence_weighted_bookings": 0.0,
+      "confidence_risk_flag": "Unknown"
+    },
+    {
+      "version_id": "v015",
+      "total_bookings": 177357260.60569188,
+      "total_pipeline": 576747574.9446378,
+      "total_saos": 57771.008431906455,
+      "total_ae_hc": 154,
+      "avg_productivity_per_ae": 375.136418389003,
+      "monthly_volatility": 2474253.18,
+      "coefficient_of_variation": 0.167,
+      "max_min_ratio": 1.78,
+      "herfindahl_index": 0.246,
+      "capacity_utilisation_variance": 684682.37,
+      "stretch_exposure_pct": 0.0,
+      "confidence_weighted_bookings": 0.0,
+      "confidence_risk_flag": "Unknown"
+    }
+  ]
+}

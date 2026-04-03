@@ -308,6 +308,123 @@ ae_model:
   stretch_threshold: 1.20                       # Don't ask any quarter to do more than 120% of original plan
 
 # ----------------------------------------------------------------------------
+# BUSINESS RECOMMENDATIONS — LEVER ANALYSIS
+# Defines the operational levers that leadership can pull to close a
+# bookings-vs-target gap, along with realistic bounds on how far each
+# lever can move.  Used by LeverAnalysisEngine to run sensitivity
+# analysis and produce ranked, plain-language recommendations.
+#
+# Categories (ordered by typical influence):
+#   1. ae_capacity    — headcount, ramp, mentoring, backfill, shrinkage
+#   2. cash_cycle     — deal close acceleration
+#   3. economics      — ASP / win-rate decay curves
+# ----------------------------------------------------------------------------
+business_recommendations:
+  # AE capacity levers (highest influence — directly controls SAO supply)
+  levers:
+    additional_hc:
+      config_path: "ae_model.starting_hc"
+      category: "ae_capacity"
+      label: "Add tenured AEs"
+      unit: "AEs"
+      direction: "increase"
+      max_delta: 20                              # Realistically can add up to 20 AEs
+      step: 5                                    # Test in increments of 5
+
+    ramp_duration:
+      config_path: "ae_model.ramp.duration_days"
+      category: "ae_capacity"
+      label: "Reduce ramp time"
+      unit: "days"
+      direction: "decrease"
+      min_value: 21                              # Can't ramp faster than 3 weeks
+      step: 7                                    # Test in 1-week increments
+
+    backfill_delay:
+      config_path: "ae_model.attrition.backfill_delay_months"
+      category: "ae_capacity"
+      label: "Reduce backfill delay"
+      unit: "months"
+      direction: "decrease"
+      min_value: 0                               # Best case: immediate backfill
+      step: 1
+
+    mentoring_overhead:
+      config_path: "ae_model.mentoring.overhead_pct_per_new_hire"
+      category: "ae_capacity"
+      label: "Reduce mentoring overhead"
+      unit: "%"
+      direction: "decrease"
+      min_value: 0.02                            # Can't go below 2% per mentee
+      step: 0.01
+
+    shrinkage_pto:
+      config_path: "ae_model.shrinkage.pto_pct"
+      category: "ae_capacity"
+      label: "Reduce PTO shrinkage"
+      unit: "%"
+      direction: "decrease"
+      min_value: 0.05                            # Can't go below 5% PTO
+      step: 0.01
+
+    shrinkage_admin:
+      config_path: "ae_model.shrinkage.admin_pct"
+      category: "ae_capacity"
+      label: "Reduce admin overhead"
+      unit: "%"
+      direction: "decrease"
+      min_value: 0.02                            # Can't go below 2% admin
+      step: 0.01
+
+    # Cash cycle levers (medium influence — determines when bookings land)
+    cash_cycle_acceleration:
+      config_path: "_cash_cycle_shift_months"
+      category: "cash_cycle"
+      label: "Accelerate deal close (shift cash cycle earlier)"
+      unit: "months"
+      direction: "decrease"
+      max_delta: 1                               # Can pull deals forward by up to 1 month
+      step: 1
+      custom_handler: true                       # Requires special perturbation logic
+
+    # Economics levers (lower influence — affects revenue per SAO)
+    asp_decay_rate:
+      config_path: "economics.default_decay.asp.rate"
+      category: "economics"
+      label: "Slow ASP decay rate"
+      unit: "rate"
+      direction: "decrease"
+      min_value: 0.0003                          # Can slow decay to ~30% of current
+      step: 0.0002
+
+    win_rate_decay_rate:
+      config_path: "economics.default_decay.win_rate.rate"
+      category: "economics"
+      label: "Slow win-rate decay"
+      unit: "rate"
+      direction: "decrease"
+      min_value: 0.001                           # Can slow win-rate decay to ~20% of current
+      step: 0.001
+
+    asp_floor:
+      config_path: "economics.default_decay.asp.floor_multiplier"
+      category: "economics"
+      label: "Raise ASP floor"
+      unit: "multiplier"
+      direction: "increase"
+      max_value: 0.95                            # ASP can't stay above 95% of base at high volume
+      step: 0.05
+
+    win_rate_floor:
+      config_path: "economics.default_decay.win_rate.floor_multiplier"
+      category: "economics"
+      label: "Raise win-rate floor"
+      unit: "multiplier"
+      direction: "increase"
+      max_value: 0.95                            # Same logic
+      step: 0.05
+
+# ----------------------------------------------------------------------------
 # WHAT-IF SCENARIOS
 # Up to 5 named risk scenarios to model against the base plan.
 # Each scenario is a bundle of perturbations applied to the base config.

@@ -1,0 +1,10 @@
+segment,v014,v015,shift_pct
+CM.Marketing,0.03,0.03,0.0
+CM.Outbound,0.03,0.03,0.0
+CM.Partner,0.03,0.03,0.0
+EOR.Marketing,0.369,0.369,0.0
+EOR.Outbound,0.059,0.059,0.0
+EOR.Partner,0.302,0.302,0.0
+Payroll.Marketing,0.082,0.082,0.0
+Payroll.Outbound,0.03,0.03,0.0
+Payroll.Partner,0.067,0.067,0.0

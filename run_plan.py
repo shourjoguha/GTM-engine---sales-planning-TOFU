@@ -5,11 +5,12 @@ GTM Planning Engine — Master Script
 Runs the full planning pipeline end-to-end and saves all intermediate
 results into a versioned output directory (versions/v{NNN}/).
 
-Supports four modes:
+Supports five modes:
     full        — Run the complete 8-stage pipeline (default)
     adjustment  — Load a version, apply mid-cycle changes, re-run, compare
     what-if     — Run base pipeline + scenario analysis
     compare     — Compare 2+ existing plan versions
+    recommend   — Analytical gap attribution + ranked lever recommendations (LeverAnalysisEngine)
 
 Usage:
     python run_plan.py
@@ -17,6 +18,7 @@ Usage:
     python run_plan.py --mode what-if --enable-scenarios all
     python run_plan.py --mode adjustment --base-version 1 --target-changes '{"annual_target": 195000000}'
     python run_plan.py --mode compare --compare-versions 1 2 5
+    python run_plan.py --mode recommend --base-version 15
 """
 
 import argparse
@@ -40,6 +42,7 @@ from gtm_engine.version_store import VersionStore
 from gtm_engine.adjustments import AdjustmentEngine
 from gtm_engine.what_if import WhatIfEngine
 from gtm_engine.comparator import VersionComparator
+from gtm_engine.lever_analysis import LeverAnalysisEngine
 
 
 # ── Utility functions ──────────────────────────────────────────────────
@@ -712,6 +715,101 @@ def run_compare_mode(args: argparse.Namespace, config: ConfigManager, project_ro
     print(f"  comparison_{version_label}_report.json")
 
 
+def run_recommend_mode(args: argparse.Namespace, config: ConfigManager, project_root: Path) -> None:
+    """Run lever sensitivity analysis and produce plain-language recommendations."""
+    data_path = str(project_root / "data" / "raw" / "2025_actuals.csv")
+
+    # ── Stages 2-5: Always run to get capacity and baselines ─────────
+    # These intermediate artifacts are required by the analytical engine
+    # and are not persisted in VersionStore, so we always recompute them.
+    print("\nBuilding capacity model and segment baselines...")
+    loader = DataLoader(config)
+    df_raw = loader.load(data_path)
+    df_clean = loader.prepare(df_raw)
+    baselines = loader.compute_segment_baselines(df_clean)
+
+    target_gen = TargetGenerator(config)
+    targets = target_gen.generate()
+
+    ae_model = AECapacityModel(config)
+    capacity = ae_model.calculate()
+
+    economics = EconomicsEngine(config)
+    economics.load_baselines(baselines)
+
+    # ── Get base allocation results ──────────────────────────────────
+    if args.base_version is not None:
+        print(f"\nLoading base results from v{args.base_version:03d}...")
+        store = VersionStore(config)
+        base = store.load(args.base_version)
+        base_results = base["results"]
+        base_summary = normalize_saved_summary(base["summary"])
+        # Use saved targets if available (preserves original target distribution)
+        targets_path = Path(config.get("system.output_dir", "versions")) / f"v{args.base_version:03d}" / "targets.csv"
+        if targets_path.exists():
+            targets = pd.read_csv(targets_path)
+        print(f"  Base bookings: ${base_results['projected_bookings'].sum():,.0f}")
+    else:
+        print("\nRunning optimizer to get base allocation...")
+        optimizer = AllocationOptimizer(config)
+        base_results = optimizer.optimize(
+            targets=targets,
+            base_data=df_clean,
+            economics_engine=economics,
+            capacity=capacity,
+        )
+        opt_summary = optimizer.get_optimization_summary(base_results)
+        base_summary = build_enriched_summary(opt_summary, capacity, base_results)
+        print(f"  Base bookings: ${base_summary['total_bookings']:,.0f}")
+
+    # ── Run analytical lever sensitivity analysis ────────────────────
+    config_dict = config.to_dict()
+    print("\nRunning analytical lever sensitivity analysis...")
+    lever_engine = LeverAnalysisEngine(config_dict)
+    report = lever_engine.analyze(base_results, capacity, targets, baselines)
+
+    # ── Print recommendations ────────────────────────────────────────
+    print()
+    lever_engine.print_recommendations(report)
+
+    # ── Save outputs ─────────────────────────────────────────────────
+    store = VersionStore(config)
+    version_id = store.save(
+        config_snapshot=config_dict,
+        results=base_results,
+        summary=sanitize_summary(base_summary),
+        description=args.description or "Lever analysis recommendations",
+        planning_mode=config.get("targets.planning_mode", "full_year"),
+    )
+    version_dir = Path(config.get("system.output_dir", "versions")) / f"v{version_id:03d}"
+
+    # Save lever results as CSV
+    lever_df = lever_engine.to_dataframe(report)
+    lever_df.to_csv(version_dir / "lever_analysis.csv", index=False)
+
+    # Save narrative
+    with open(version_dir / "lever_recommendations.txt", "w") as f:
+        f.write(report["recommendations_text"])
+
+    # Save full report as JSON
+    annual_target = report["annual_target"]
+    gap = report["gap"]
+    report_json = {
+        "gap": gap,
+        "gap_pct": round(gap / annual_target * 100, 2) if annual_target else 0,
+        "annual_target": annual_target,
+        "actual_bookings": report["actual_bookings"],
+        "sao_shadow_price": report["sao_shadow_price"],
+    }
+    with open(version_dir / "lever_analysis_report.json", "w") as f:
+        json.dump(report_json, f, indent=2, default=json_safe)
+
+    print(f"\nLever analysis saved to {version_dir}/")
+    print(f"  lever_analysis.csv            Ranked lever impact table")
+    print(f"  lever_recommendations.txt     Plain-language narrative")
+    print(f"  lever_analysis_report.json    Summary metrics")
+
+
 # ── Helpers ─────────────────────────────────────────────────────────
 
 
@@ -771,7 +869,7 @@ def main() -> None:
     # Mode selection
     parser.add_argument(
         "--mode",
-        choices=["full", "adjustment", "what-if", "compare"],
+        choices=["full", "adjustment", "what-if", "compare", "recommend"],
         default="full",
         help="Execution mode (default: full)",
     )
@@ -815,6 +913,8 @@ def main() -> None:
         run_whatif_mode(args, config, project_root)
     elif args.mode == "compare":
         run_compare_mode(args, config, project_root)
+    elif args.mode == "recommend":
+        run_recommend_mode(args, config, project_root)
 
 
 if __name__ == "__main__":

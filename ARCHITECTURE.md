@@ -1,5 +1,22 @@
 # GTM Planning Engine — Architecture Specification
 
+## Related Documentation
+
+This document is one of three complementary references:
+
+| Document | Purpose | Audience | When to Use |
+|-----------|---------|-----------|--------------|
+| **ARCHITECTURE.md** (this file) | System blueprint and technical specification | Engineers, architects, implementation team | "What do I build?" - Module specs, data flow, file structure, build phases |
+| **Mathematical Reverse-Engineering.md** | Complete mathematical foundations and formula derivations | Data scientists, analysts, validators | "How does the math work?" - Formulas, variable lineage, optimization model, validation calculations |
+| **Open Questions & Forecasting Engine.md** | Strategic roadmap and parameter resolution guidance | Architects, researchers, leadership | "How do we evolve?" - Parameter validation, forecasting architecture, implementation roadmap |
+
+**Key relationships:**
+- This document provides the structural blueprint for building the system
+- Mathematical Reverse-Engineering provides the mathematical reference for understanding and validating all calculations
+- Open Questions & Forecasting Engine provides the research roadmap for evolving from deterministic to probabilistic planning
+
+---
+
 ## Document Purpose
 
 This is the technical specification for a config-driven, modular GTM (Go-To-Market) planning engine. The system allocates sales capacity across channels, products, and segments to meet revenue targets — accounting for AE hiring plans, ramp dynamics, marginal economics, and mid-cycle adjustments.
@@ -36,17 +53,17 @@ Built for continuous use: annual/quarterly planning cycles AND mid-quarter re-pl
 | **Seasonality Weights** | `w_m` | ratio | Per-month (or per-quarter) weight determining what share of annual target falls in each period. Must sum to 1.0. |
 | **Period Target** | `T_p` | $ | Target for a specific period (month or quarter) = `T_annual × w_m`. |
 | **Channel Share** | `s_c` | ratio | The fraction of total SAOs allocated to a specific product-channel segment. All shares sum to 1.0 per period. |
-| **Share Floor** | `s_min` | ratio | Minimum share any segment must receive (default: 0.05). Prevents zero-coverage. **Manually set in config** — the engine enforces this as a hard constraint, it does not calculate it. |
-| **Share Ceiling** | `s_max` | ratio | Maximum share any segment can receive (default: 0.40). Prevents over-concentration. **Manually set in config** — same as floor, this is a human judgment call enforced by the optimizer. |
+| **Share Floor** | `s_min` | ratio | Minimum share any segment must receive (default: 0.05). Prevents zero-coverage. **Manually set in config** — the engine enforces this as a hard constraint, it does not calculate it. See [Open Questions & Forecasting Engine](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine_%20Answering%20Open%20Questions%20&%20Building%20a%20Forecasting%20Engine%20for%20Remote.md) for data-driven resolution approaches. |
+| **Share Ceiling** | `s_max` | ratio | Maximum share any segment can receive (default: 0.40). Prevents over-concentration. **Manually set in config** — same as floor, this is a human judgment call enforced by the optimizer. See [Open Questions & Forecasting Engine](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine_%20Answering%20Open%20Questions%20&%20Building%20a%20Forecasting%20Engine%20for%20Remote.md) for data-driven resolution approaches. |
 | **Stretch Threshold** | `stretch_max` | ratio | Maximum ratio of re-planned target to original target for any quarter (default: 1.20). If recovery would require a quarter to exceed this, the system flags it as a risk. |
 | **Effective ROI** | `ROI_eff(v)` | $/SAO | ROI at volume level `v`, after applying decay. `ROI_eff(v) = ASP(v) × CW(v)`. |
-| **ASP Decay Rate** | `d_asp` | ratio/unit | Rate at which ASP degrades as volume increases. Reflects pricing pressure at scale. **Configured independently from win rate decay.** Configurable per segment with global default. |
-| **Win Rate Decay Rate** | `d_cw` | ratio/unit | Rate at which CW Rate degrades as volume increases. Reflects lead quality degradation at scale. **Configured independently from ASP decay.** Configurable per segment with global default. |
+| **ASP Decay Rate** | `d_asp` | ratio/unit | Rate at which ASP degrades as volume increases. Reflects pricing pressure at scale. **Configured independently from win rate decay.** Configurable per segment with global default. See [Open Questions & Forecasting Engine](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine_%20Answering%20Open%20Questions%20&%20Building%20a%20Forecasting%20Engine%20for%20Remote.md) for scientific resolution approaches to decay parameter estimation.
+| **Win Rate Decay Rate** | `d_cw` | ratio/unit | Rate at which CW Rate degrades as volume increases. Reflects lead quality degradation at scale. **Configured independently from ASP decay.** Configurable per segment with global default. See [Open Questions & Forecasting Engine](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine_%20Answering%20Open%20Questions%20&%20Building%20a%20Forecasting%20Engine%20for%20Remote.md) for scientific resolution approaches to decay parameter estimation. |
 | **ASP Decay Threshold** | `v_thresh_asp` | SAOs | Volume level at which ASP decay begins. Below this, ASP is constant at its base value. |
 | **Win Rate Decay Threshold** | `v_thresh_cw` | SAOs | Volume level at which CW Rate decay begins. Below this, CW rate is constant at its base value. |
 | **Decay Floor** | `floor_mult` | ratio | Minimum value as a fraction of the base (e.g., 0.70 = ASP won't drop below 70% of base). Prevents decay from driving values to zero. **Set independently for ASP and CW Rate.** |
 | **Confidence Level** | `conf` | categorical | Low / Medium / High. Derived from data density for a segment. Low = fewer than N deals, uses fallback values. |
-| **Confidence Threshold** | `N_conf` | count | Minimum number of historical deals required for a segment to be rated "high confidence" (default: 30). |
+| **Confidence Threshold** | `N_conf` | count | Minimum number of historical deals required for a segment to be rated "high confidence" (default: 30). See [Open Questions & Forecasting Engine](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine_%20Answering%20Open%20Questions%20&%20Building%20a%20Forecasting%20Engine%20for%20Remote.md) for margin-of-error-based threshold calculations.
 | **Fallback Multiplier** | `f_mult` | ratio | Applied to parent segment's values when a sub-segment has low confidence (e.g., 0.7x). |
 
 ### 1.3 AE Capacity Variables
@@ -58,14 +75,14 @@ Built for continuous use: annual/quarterly planning cycles AND mid-quarter re-pl
 | **Ramp Duration** | `Y` | days | Time for a new AE to reach full productivity from start date. |
 | **Ramp Velocity** | `X` | % per period | Rate at which new AEs gain productivity. Linear ramp: productivity at day `d` = `min(d/Y, 1.0)`. |
 | **Mentoring Overhead** | `A` | % per new hire | Percentage of a tenured AE's time consumed per new hire they mentor. Degrades linearly from `A%` to `0%` over `Y` days. |
-| **Total Mentoring Tax** | `M_tax` | ratio | Combined mentoring overhead on tenured AE pool = `Σ(active_new_hires × A × (1 - days_in/Y))`. Caps the number of mentors needed. |
+| **Total Mentoring Tax** | `M_tax` | ratio | Combined mentoring overhead on tenured AE pool = `Σ(count × A × (1 - days_in/Y))` for all ramping AEs, capped at `max_mentees_per_ae × tenured_hc`, then divided by `tenured_hc` and clamped to `[0, 1]`. See [Mathematical Reverse-Engineering](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine%20%E2%80%94%20Mathematical%20Reverse-Engineering.md) for complete derivation. |
 | **PTO Rate** | `pto` | % | Percentage of AE time lost to paid time off (static, annual). |
 | **Admin Rate** | `admin` | % | Percentage of AE time lost to admin tasks (static). |
 | **Enablement Rate** | `enable(r)` | % | Percentage of time for training. Function of new-hire ratio `r = new_hires / total_HC`. Higher when many new hires are ramping. |
 | **Attrition Rate** | `attrition` | % annual | Expected annual AE attrition. Applied monthly as `attrition/12`. |
 | **Backfill Delay** | `backfill_months` | months | Time between an AE departing and their backfill starting. |
 | **Effective Capacity** | `C_eff(t)` | SAOs/month | Total SAOs the AE team can deliver in month `t` = `(tenured_AEs × (1 - shrinkage - M_tax) × productivity_per_AE) + (ramping_AEs × ramp_factor × (1 - shrinkage) × productivity_per_AE)`. |
-| **Productivity per AE** | `P_ae` | SAOs/month | Baseline SAOs a fully-ramped AE can work per month. Derived from historical data or set in config. |
+| **Productivity per AE** | `P_ae` | SAOs/month | Baseline SAOs a fully-ramped AE can work per month. Derived from historical data or set in config. See [Open Questions & Forecasting Engine](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine_%20Answering%20Open%20Questions%20&%20Building%20a%20Forecasting%20Engine%20for%20Remote.md) for CRM-based empirical derivation approaches. |
 
 ### 1.4 Planning Mode Variables
 
@@ -81,6 +98,15 @@ Built for continuous use: annual/quarterly planning cycles AND mid-quarter re-pl
 ## 2. Module Architecture
 
 ### 2.1 Module Overview
+
+**Pipeline vs. Support Modules:**
+
+The 13 modules are organized into two categories:
+
+| Category | Modules | Purpose |
+|-----------|----------|---------|
+| **Pipeline Modules** (8) | Config Manager, Data Loader, Target Generator, Marginal Economics, AE Capacity, Allocation Optimizer, Validation Engine, Recovery & Rebalancing | Core execution flow invoked by `run_plan.py` to generate allocation results |
+| **Support Modules** (5) | Version Store, Version Comparator, What-If Engine, Ad-Hoc Adjustment, Lever Analysis Engine | Complementary functionality for versioning, comparison, scenario modeling, mid-cycle re-planning, and gap attribution |
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -115,10 +141,10 @@ Built for continuous use: annual/quarterly planning cycles AND mid-quarter re-pl
 │                                                                     │
 ├─────────────────────────────────────────────────────────────────────┤
 │                        ANALYSIS LAYER                               │
-│  ┌──────────────────┐  ┌──────────────────────────────────────┐    │
-│  │ What-If          │  │ Version                              │    │
-│  │ Engine           │  │ Comparator                           │    │
-│  └──────────────────┘  └──────────────────────────────────────┘    │
+│  ┌──────────────────┐  ┌───────────────┐  ┌───────────────────┐   │
+│  │ What-If          │  │ Version       │  │ Lever Analysis    │   │
+│  │ Engine           │  │ Comparator    │  │ Engine            │   │
+│  └──────────────────┘  └───────────────┘  └───────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -175,7 +201,7 @@ Built for continuous use: annual/quarterly planning cycles AND mid-quarter re-pl
 **Key responsibilities**:
 - Calculate `T_annual` from prior year actuals × `(1 + g)`, or accept a hard-coded target
 - Distribute across periods using one of two modes:
-  - **Monthly mode**: Apply `w_m` seasonality weights (configurable, default inferred from data — months 4, 7, 10, 11 as peaks). Weights must sum to 1.0.
+  - **Monthly mode**: Apply `w_m` seasonality weights (manually configured in config). Weights must sum to 1.0. See [Open Questions & Forecasting Engine](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine_%20Answering%20Open%20Questions%20&%20Building%20a%20Forecasting%20Engine%20for%20Remote.md) for scientific resolution approaches to seasonality estimation.
   - **Quarterly mode**: Distribute to quarters using quarterly weights. The optimizer then distributes within quarters.
 - In `rolling_forward` mode: replace completed periods with actuals, compute remaining target, redistribute across unlocked periods (maintaining seasonality proportions for unlocked months)
 - In `manual_lock` mode: freeze specified periods, redistribute only across unlocked periods
@@ -203,6 +229,7 @@ Redistributed: T_m_new = T_remaining × (w_m / Σ w_m for unlocked months)
   - **Linear**: `ROI(v) = ROI_base - d × max(0, v - v_threshold)`, floored at `ROI_floor`
   - **Exponential**: `ROI(v) = ROI_base × exp(-d × max(0, v - v_threshold))`, floored at `ROI_floor`
   - **Step**: `ROI(v) = ROI_base if v <= v_threshold else ROI_base × (1 - d)`, floored at `ROI_floor`
+  - See [Mathematical Reverse-Engineering](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine%20%E2%80%94%20Mathematical%20Reverse-Engineering.md) for complete formula derivations and cash cycle integration.
 - Toggle between default parameters (from config) and calibrated parameters (from calibration module)
 - The calibration sub-module (`calibration.py`) fits decay curves from historical data:
   - Takes deal-level data, bins by volume level, fits the chosen function type
@@ -233,10 +260,11 @@ Redistributed: T_m_new = T_remaining × (w_m / Σ w_m for unlocked months)
   - **Attrition**: Applied monthly as `attrition_annual / 12`. Reduces tenured pool. Backfill enters as a new tranche after `backfill_delay` months.
 - **Effective capacity per month**:
   ```
-  C_tenured = HC_tenured × (1 - shrinkage - M_tax) × P_ae
+  C_tenured = max(0, HC_tenured × (1 - shrinkage - M_tax) × P_ae)
   C_ramping = Σ(new_hire × ramp_factor × (1 - shrinkage) × P_ae) for each tranche
   C_eff = C_tenured + C_ramping
   ```
+  Note: The `max(0, ...)` clamp prevents negative capacity due to high mentoring tax. See [Mathematical Reverse-Engineering](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine%20%E2%80%94%20Mathematical%20Reverse-Engineering.md) for complete derivation.
 - Output includes: HC breakdown (tenured, ramping, total), capacity, mentoring overhead, and flags for months where M_tax exceeds a warning threshold
 
 ---
@@ -282,6 +310,7 @@ Uses `scipy.optimize.minimize` with configurable objective and constraints:
 ```
 segment | share | required_SAOs | projected_pipeline | projected_bookings | projected_deals
 ```
+See [Mathematical Reverse-Engineering](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine%20%E2%80%94%20Mathematical%20Reverse-Engineering.md) for complete optimization model formulation, convergence algorithm, and output calculation formulas.
 
 ---
 
@@ -420,6 +449,33 @@ segment | share | required_SAOs | projected_pipeline | projected_bookings | proj
 
 ---
 
+#### Module 13: Lever Analysis Engine (`lever_analysis.py`)
+
+**Purpose**: When a plan misses its bookings target, decompose the gap into root causes and rank operational levers by their estimated impact using analytical closed-form sensitivity — no pipeline re-runs required.
+
+**Inputs**:
+- `base_results` (DataFrame) — segment × month allocation from AllocationOptimizer
+- `capacity` (DataFrame) — monthly AE capacity from AECapacityModel
+- `targets` (DataFrame) — monthly revenue targets from TargetGenerator
+- `baselines` (dict) — `{segment: {asp, win_rate}}` from DataLoader
+
+**Outputs** (saved to version dir via `--mode recommend`):
+- `lever_analysis.csv` — Ranked lever impact table (lever, estimated gain, % of gap, recommendation)
+- `lever_recommendations.txt` — Plain-language narrative for leadership
+- `lever_analysis_report.json` — Summary metrics (gap, gap_pct, annual_target, actual_bookings, sao_shadow_price)
+
+**Key concepts**:
+- **Bookings identity**: `bookings_m = Σ_s SAOs_s × ASP_s(vol) × CW_s(vol) × IWF_s`
+  Each factor maps directly to a lever category (capacity / ASP decay / win-rate decay / cash cycle).
+- **SAO shadow price** π: `bookings_constrained / saos_constrained` — bridges capacity (SAOs) and revenue (bookings) in a single scalar. Only capacity-constrained months contribute; unconstrained months have zero marginal value.
+- **Gap decomposition waterfall**: Baseline (no decay, full capacity) → capacity shortfall → ASP decay loss → win-rate decay loss → cash cycle deferral → actual bookings.
+- **Analytical sensitivity** `∂bookings/∂lever`: computed from closed-form expressions, not finite differences. O(1), completes in <2 seconds regardless of plan size.
+- Lever bounds and step sizes are configured in `config['business_recommendations']['levers']`.
+
+**Invoked by**: `run_plan.py --mode recommend`
+
+---
+
 ## 3. Data Flow
 
 ### 3.1 Full Planning Run
@@ -463,7 +519,38 @@ raw_data.csv ──► Data Loader ──► df_clean
               scenario_comparison
 ```
 
-### 3.2 Mid-Quarter Re-Plan
+### 3.2 Gap Attribution & Lever Recommendations (`--mode recommend`)
+
+```
+config.yaml ──► Config Manager
+                    │
+raw_data.csv ──► Data Loader ──► baselines {seg: {asp, win_rate}}
+                    │
+              Target Generator ──► targets
+                    │
+              AE Capacity Model ──► capacity (monthly HC + SAOs)
+                    │
+              [Optional: load saved results from VersionStore
+               OR run AllocationOptimizer for fresh base]
+                    │
+                    ▼
+              Lever Analysis Engine
+                    │
+                    ├──► Gap decomposition waterfall
+                    │     (capacity shortfall / ASP decay / win-rate decay / cash cycle)
+                    │
+                    └──► Analytical sensitivities per lever
+                              │
+                              ▼
+                         Ranked recommendations + narrative
+                              │
+                              ▼
+                         Version Store (lever_analysis.csv,
+                                        lever_recommendations.txt,
+                                        lever_analysis_report.json)
+```
+
+### 3.3 Mid-Quarter Re-Plan
 
 ```
 actuals.csv ──► Ad-Hoc Adjustment
@@ -496,8 +583,26 @@ The config is structured into these sections:
 | `allocation` | Objective function, constraints, floor/ceiling |
 | `economics` | Decay functions, calibration toggles, fallback rules |
 | `ae_model` | Hiring plan, ramp parameters, shrinkage, stretch threshold |
-| `what_if_scenarios` | Up to 5 named perturbation profiles |
+| `what_if_scenarios` | Up to 5 named perturbation profiles (disabled by default; activate with `--enable-scenarios`) |
+| `business_recommendations` | Lever bounds for gap analysis — one entry per lever with `config_path`, `max_delta`/`min_value`, `step`, `direction`, `label`, `unit` |
 | `system` | Optimizer mode, confidence thresholds, output settings |
+
+**`business_recommendations.levers` structure** (used by LeverAnalysisEngine):
+
+```yaml
+business_recommendations:
+  levers:
+    <lever_name>:
+      config_path: "ae_model.starting_hc"   # dot-path to the config value to perturb
+      category: "ae_capacity"               # ae_capacity | economics_decay | cash_cycle
+      label: "Add tenured AEs"              # human-readable name for reports
+      unit: "AEs"                           # unit of the delta
+      direction: "increase"                 # increase | decrease
+      max_delta: 20                         # max change from current value (or min_value for decrease)
+      step: 5                               # step size for sensitivity display
+```
+
+Each lever in this section is automatically picked up by `LeverAnalysisEngine` and evaluated analytically when running `--mode recommend`.
 
 ---
 
@@ -529,7 +634,8 @@ GTM_Planning_Engine/
 │   ├── adjustments.py       ← Module 9
 │   ├── what_if.py           ← Module 10
 │   ├── version_store.py     ← Module 11
-│   └── comparator.py        ← Module 12
+│   ├── comparator.py        ← Module 12
+│   └── lever_analysis.py    ← Module 13
 ├── versions/                ← Stored plan versions
 │   └── (created at runtime)
 ├── notebooks/
@@ -561,3 +667,44 @@ GTM_Planning_Engine/
 | Optional (Phase 5+) | plotly >= 5.18 (interactive charts for future UI layer) |
 | Platform | macOS (M3), local execution. Jupyter Notebook for orchestration. |
 | Data scale | Well within local memory limits. Expect < 100K rows for foreseeable use. |
+
+---
+
+## 8. Adjacent Builds
+
+The current architecture implements a **deterministic optimization engine** that allocates resources given fixed inputs (targets, seasonality, economics, capacity). While sufficient for baseline planning, this architecture can be extended with a **probabilistic forecasting layer** to generate better inputs by modeling market dynamics, strategic intent, and uncertainty.
+
+### 8.1 Forecasting Engine Architecture
+
+A forecasting engine sits upstream of the optimizer and produces three outputs: **demand forecast**, **economics forecast**, and **capacity forecast**. These become probabilistic inputs (P10/P50/P90 distributions) rather than point estimates, enabling scenario-based planning.
+
+**Three core modules:**
+
+| Module | Purpose | Key Features |
+|---------|---------|---------------|
+| **Demand Forecaster** | Forecast SAO demand by product × channel × month | Prophet-based time series, strategic bet overlays, macro indicator integration, Monte Carlo simulation |
+| **Economics Forecaster** | Forecast ASP and win rate evolution | Mix-shift models, competitive dynamics, AE tenure effects, trend extrapolation |
+| **Capacity Forecaster** | Forecast AE capacity under uncertainty | Stochastic hiring/attrition, empirical ramp distributions, scenario generation |
+
+### 8.2 Strategic Bet Management
+
+The forecasting layer introduces **exploration-exploitation trade-offs**: investing in new products/markets despite uncertain economics. This requires mechanisms for:
+
+- **Strategic override flags** to mark high-priority segments (e.g., Payroll expansion)
+- **Learning bonuses** in the objective function to value information from running deals through uncertain segments
+- **Separate tracking** of exploration costs vs. exploitation revenue
+- **Bayesian updating** to refine estimates as data accumulates
+
+### 8.3 Implementation Path
+
+The forecasting engine is comparable in complexity to the existing optimisation engine. Key differences:
+
+| Dimension | Current System | Forecasting Layer |
+|-----------|---------------|-------------------|
+| **Uncertainty** | Handled via what-if scenarios (manual) | Built into all forecasts (probabilistic) |
+| **Parameters** | Fixed values in config | Distributions updated from data |
+| **Optimization** | Deterministic allocation | Scenario-based planning with confidence intervals |
+| **New dependencies** | None | Prophet, PyMC (optional for Bayesian models) |
+| **New data requirements** | Historical actuals only | Deal-level timestamps, HR data, marketing calendar |
+
+See [Open Questions & Forecasting Engine](file:///Users/shourjosmac/Documents/Claude/Projects/Interview%20prep/GTM_Planning_Engine/WARP-GTM%20Planning%20Engine_%20Answering%20Open%20Questions%20&%20Building%20a%20Forecasting%20Engine%20for%20Remote.md) for complete architecture, resolution strategies for all hardcoded parameters, and a 10-week implementation roadmap. |
