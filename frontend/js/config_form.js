@@ -3,18 +3,14 @@
 (function() {
   'use strict';
 
-  /**
-   * Configuration Form state
-   */
   const FORM_STATE = {
     config_schema: null,
     is_loaded: false,
-    is_initializing: false
+    is_initializing: false,
+    tooltip_popup: null,
+    tooltip_listeners_initialized: false
   };
 
-  /**
-   * Tooltip content for form fields
-   */
   const TOOLTIPS = {
     dimensions: {
       title: "Planning Dimensions",
@@ -208,6 +204,12 @@
       impact: "Limits recovery rebalancing for underperformance.",
       example: "1.20 for 120% of original plan max."
     },
+    hiring_plan: {
+      title: "Hiring Tranches",
+      description: "Define hiring counts and start month by tranche.",
+      impact: "Controls when AE capacity enters the model.",
+      example: "Add a tranche for month 6 with 8 hires."
+    },
     output_dir: {
       title: "Output Directory",
       description: "Where version snapshots are saved.",
@@ -234,9 +236,6 @@
     }
   };
 
-  /**
-   * DOM element references
-   */
   const DOM = {
     config_panel: null,
     form_container: null,
@@ -245,9 +244,6 @@
     error_dismiss_btn: null
   };
 
-  /**
-   * Initialize the configuration form
-   */
   async function initialize() {
     if (FORM_STATE.is_loaded || FORM_STATE.is_initializing) {
       return;
@@ -275,6 +271,9 @@
       await load_config_schema();
       generate_form();
       setup_event_listeners();
+      update_seasonality_sum();
+      update_planning_mode_controls();
+      sync_hiring_tranche_count();
 
       FORM_STATE.is_loaded = true;
       if (typeof Logger !== 'undefined' && Logger.debug) {
@@ -285,10 +284,6 @@
     }
   }
 
-  /**
-   * Show error display with message
-   * @param {string} message - Error message to display
-   */
   function show_error(message) {
     if (DOM.error_text) {
       DOM.error_text.textContent = message;
@@ -298,18 +293,12 @@
     }
   }
 
-  /**
-   * Hide error display
-   */
   function hide_error() {
     if (DOM.error_display) {
       DOM.error_display.classList.add('hidden');
     }
   }
 
-  /**
-   * Load configuration schema from API
-   */
   async function load_config_schema() {
     try {
       const response = await fetch('/api/config-schema');
@@ -327,10 +316,6 @@
     }
   }
 
-  /**
-   * Show schema loading error with user-friendly message
-   * @param {string} error_message - The error message
-   */
   function show_schema_error(error_message) {
     if (DOM.config_panel) {
       DOM.config_panel.innerHTML = `
@@ -351,9 +336,6 @@
     }
   }
 
-  /**
-   * Generate form from config schema
-   */
   function generate_form() {
     if (!FORM_STATE.config_schema) {
       DOM.config_panel.innerHTML = `
@@ -409,9 +391,6 @@
     DOM.form_container = document.getElementById('configForm');
   }
 
-  /**
-   * Generate dimensions section
-   */
   function generate_dimensions_section() {
     const config = FORM_STATE.config_schema;
     const dimensions = config.dimensions || {};
@@ -453,12 +432,11 @@
     `;
   }
 
-  /**
-   * Generate targets section
-   */
   function generate_targets_section() {
     const config = FORM_STATE.config_schema;
     const targets = config.targets || {};
+    const planning_mode = targets.planning_mode || 'full_year';
+    const rolling_start_month = get_rolling_start_month(targets);
 
     return `
       <div class="form-section">
@@ -475,24 +453,21 @@
 
         <div class="form-grid">
           <div class="form-field">
-            <label class="field-label">Annual Target ($)</label>
-            ${generate_tooltip('annual_target')}
+            ${generate_field_label('Annual Target ($)', 'annual_target')}
             <div class="field-input">
               <input type="number" name="annual_target" value="${targets.annual_target || ''}" step="1000000" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Growth Rate</label>
-            ${generate_tooltip('growth_rate')}
+            ${generate_field_label('Growth Rate', 'growth_rate')}
             <div class="field-input">
               <input type="number" name="growth_rate" value="${targets.growth_rate || ''}" step="0.01" min="0" max="1" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Target Source</label>
-            ${generate_tooltip('target_source')}
+            ${generate_field_label('Target Source', 'target_source')}
             <div class="field-input">
               <select name="target_source" required>
                 <option value="fixed" ${targets.target_source === 'fixed' ? 'selected' : ''}>Fixed</option>
@@ -502,27 +477,72 @@
           </div>
 
           <div class="form-field">
-            <label class="field-label">Planning Mode</label>
-            ${generate_tooltip('planning_mode')}
+            ${generate_field_label('Planning Mode', 'planning_mode')}
             <div class="field-input">
-              <select name="planning_mode" required>
-                <option value="full_year" ${targets.planning_mode === 'full_year' ? 'selected' : ''}>Full Year</option>
-                <option value="rolling_forward" ${targets.planning_mode === 'rolling_forward' ? 'selected' : ''}>Rolling Forward</option>
-                <option value="manual_lock" ${targets.planning_mode === 'manual_lock' ? 'selected' : ''}>Manual Lock</option>
+              <select name="planning_mode" id="planningModeSelect" required>
+                <option value="full_year" ${planning_mode === 'full_year' ? 'selected' : ''}>Full Year</option>
+                <option value="rolling_forward" ${planning_mode === 'rolling_forward' ? 'selected' : ''}>Rolling Forward</option>
+                <option value="manual_lock" ${planning_mode === 'manual_lock' ? 'selected' : ''}>Manual Lock</option>
               </select>
             </div>
           </div>
         </div>
 
+        <div class="planning-mode-controls" id="planningModeControls">
+          <div class="planning-control-block ${planning_mode === 'rolling_forward' ? '' : 'hidden'}" id="rollingForwardControls">
+            <div class="planning-control-header">Rolling Forward Settings</div>
+            <div class="form-grid planning-mode-grid">
+              <div class="form-field">
+                <label class="field-label">Roll Forward From Month</label>
+                <div class="field-input">
+                  <select name="rolling_start_month" id="rollingStartMonth">
+                    ${build_month_options(rolling_start_month)}
+                  </select>
+                </div>
+              </div>
+              <div class="form-field">
+                <label class="field-label">Actuals File</label>
+                <div class="field-input">
+                  <input type="text" name="actuals_file" value="${targets.actuals_file || ''}" placeholder="Path to actuals CSV">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="planning-control-block ${planning_mode === 'manual_lock' ? '' : 'hidden'}" id="manualLockControls">
+            <div class="planning-control-header">Locked Months</div>
+            <div class="locked-months-grid">
+              ${Array.from({ length: 12 }, (_, index) => {
+                const month_number = index + 1;
+                const checked = Array.isArray(targets.locked_months) && targets.locked_months.includes(month_number);
+                return `
+                  <label class="month-chip">
+                    <input type="checkbox" name="locked_month_${month_number}" ${checked ? 'checked' : ''}>
+                    <span>Month ${month_number}</span>
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+
         <div class="form-subsection">
-          <h4>Seasonality Weights</h4>
-          ${generate_tooltip('seasonality_weights')}
+          <div class="subsection-header-row">
+            <h4>Seasonality Weights</h4>
+            ${generate_tooltip('seasonality_weights')}
+            <span class="seasonality-sum-badge" id="seasonalitySumBadge">
+              Sum: <strong id="seasonalitySumValue">0.0%</strong>
+            </span>
+          </div>
           <div class="seasonality-grid">
             ${Object.entries(targets.seasonality_weights || {}).map(([month, weight]) => `
               <div class="form-field small">
                 <label class="field-label">${format_label(month)}</label>
                 <div class="field-input">
-                  <input type="number" name="seasonality_${month}" value="${weight}" step="0.001" min="0" max="1" required>
+                  <div class="percent-input-wrap">
+                    <input type="number" class="seasonality-input" name="seasonality_pct_${month}" value="${to_percent(weight)}" step="0.1" min="0" required>
+                    <span class="percent-symbol">%</span>
+                  </div>
                 </div>
               </div>
             `).join('')}
@@ -532,9 +552,6 @@
     `;
   }
 
-  /**
-   * Generate allocation section
-   */
   function generate_allocation_section() {
     const config = FORM_STATE.config_schema;
     const allocation = config.allocation || {};
@@ -553,8 +570,7 @@
 
         <div class="form-grid">
           <div class="form-field">
-            <label class="field-label">Objective Metric</label>
-            ${generate_tooltip('objective_metric')}
+            ${generate_field_label('Objective Metric', 'objective_metric')}
             <div class="field-input">
               <select name="objective_metric" required>
                 <option value="bookings" ${allocation.objective?.metric === 'bookings' ? 'selected' : ''}>Bookings</option>
@@ -565,8 +581,7 @@
           </div>
 
           <div class="form-field">
-            <label class="field-label">Optimizer Mode</label>
-            ${generate_tooltip('optimizer_mode')}
+            ${generate_field_label('Optimizer Mode', 'optimizer_mode')}
             <div class="field-input">
               <select name="optimizer_mode" required>
                 <option value="greedy" ${allocation.optimizer_mode === 'greedy' ? 'selected' : ''}>Greedy (Fast)</option>
@@ -576,16 +591,14 @@
           </div>
 
           <div class="form-field">
-            <label class="field-label">Share Floor</label>
-            ${generate_tooltip('share_floor')}
+            ${generate_field_label('Share Floor', 'share_floor')}
             <div class="field-input">
               <input type="number" name="share_floor" value="${allocation.constraints?.share_floor || ''}" step="0.01" min="0" max="1" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Share Ceiling</label>
-            ${generate_tooltip('share_ceiling')}
+            ${generate_field_label('Share Ceiling', 'share_ceiling')}
             <div class="field-input">
               <input type="number" name="share_ceiling" value="${allocation.constraints?.share_ceiling || ''}" step="0.01" min="0" max="1" required>
             </div>
@@ -595,9 +608,6 @@
     `;
   }
 
-  /**
-   * Generate economics section
-   */
   function generate_economics_section() {
     const config = FORM_STATE.config_schema;
     const economics = config.economics || {};
@@ -647,8 +657,7 @@
           <h4>ASP Decay</h4>
           <div class="form-grid">
             <div class="form-field">
-              <label class="field-label">Function</label>
-              ${generate_tooltip('asp_decay_function')}
+              ${generate_field_label('Function', 'asp_decay_function')}
               <div class="field-input">
                 <select name="asp_decay_function">
                   <option value="exponential" ${default_decay.asp?.function === 'exponential' ? 'selected' : ''}>Exponential</option>
@@ -660,24 +669,21 @@
             </div>
 
             <div class="form-field">
-              <label class="field-label">Rate</label>
-              ${generate_tooltip('asp_decay_rate')}
+              ${generate_field_label('Rate', 'asp_decay_rate')}
               <div class="field-input">
                 <input type="number" name="asp_decay_rate" value="${default_decay.asp?.rate || ''}" step="0.0001" min="0">
               </div>
             </div>
 
             <div class="form-field">
-              <label class="field-label">Threshold</label>
-              ${generate_tooltip('asp_threshold')}
+              ${generate_field_label('Threshold', 'asp_threshold')}
               <div class="field-input">
                 <input type="number" name="asp_threshold" value="${default_decay.asp?.threshold || ''}" step="1" min="0">
               </div>
             </div>
 
             <div class="form-field">
-              <label class="field-label">Floor Multiplier</label>
-              ${generate_tooltip('asp_floor_multiplier')}
+              ${generate_field_label('Floor Multiplier', 'asp_floor_multiplier')}
               <div class="field-input">
                 <input type="number" name="asp_floor_multiplier" value="${default_decay.asp?.floor_multiplier || ''}" step="0.01" min="0" max="1">
               </div>
@@ -689,8 +695,7 @@
           <h4>Win Rate Decay</h4>
           <div class="form-grid">
             <div class="form-field">
-              <label class="field-label">Function</label>
-              ${generate_tooltip('win_rate_decay_function')}
+              ${generate_field_label('Function', 'win_rate_decay_function')}
               <div class="field-input">
                 <select name="win_rate_decay_function">
                   <option value="exponential" ${default_decay.win_rate?.function === 'exponential' ? 'selected' : ''}>Exponential</option>
@@ -702,24 +707,21 @@
             </div>
 
             <div class="form-field">
-              <label class="field-label">Rate</label>
-              ${generate_tooltip('win_rate_decay_rate')}
+              ${generate_field_label('Rate', 'win_rate_decay_rate')}
               <div class="field-input">
                 <input type="number" name="win_rate_decay_rate" value="${default_decay.win_rate?.rate || ''}" step="0.0001" min="0">
               </div>
             </div>
 
             <div class="form-field">
-              <label class="field-label">Threshold</label>
-              ${generate_tooltip('win_rate_threshold')}
+              ${generate_field_label('Threshold', 'win_rate_threshold')}
               <div class="field-input">
                 <input type="number" name="win_rate_threshold" value="${default_decay.win_rate?.threshold || ''}" step="1" min="0">
               </div>
             </div>
 
             <div class="form-field">
-              <label class="field-label">Floor Multiplier</label>
-              ${generate_tooltip('win_rate_floor_multiplier')}
+              ${generate_field_label('Floor Multiplier', 'win_rate_floor_multiplier')}
               <div class="field-input">
                 <input type="number" name="win_rate_floor_multiplier" value="${default_decay.win_rate?.floor_multiplier || ''}" step="0.01" min="0" max="1">
               </div>
@@ -730,12 +732,12 @@
     `;
   }
 
-  /**
-   * Generate AE Model section
-   */
   function generate_ae_model_section() {
     const config = FORM_STATE.config_schema;
     const ae_model = config.ae_model || {};
+    const hiring_plan = Array.isArray(ae_model.hiring_plan) && ae_model.hiring_plan.length
+      ? ae_model.hiring_plan
+      : [{ count: 0, start_month: 1 }, { count: 0, start_month: 2 }, { count: 0, start_month: 3 }];
 
     return `
       <div class="form-section">
@@ -753,72 +755,63 @@
 
         <div class="form-grid">
           <div class="form-field">
-            <label class="field-label">Starting Headcount</label>
-            ${generate_tooltip('starting_hc')}
+            ${generate_field_label('Starting Headcount', 'starting_hc')}
             <div class="field-input">
               <input type="number" name="starting_hc" value="${ae_model.starting_hc || ''}" step="1" min="0" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Productivity per AE</label>
-            ${generate_tooltip('productivity_per_ae')}
+            ${generate_field_label('Productivity per AE', 'productivity_per_ae')}
             <div class="field-input">
               <input type="number" name="productivity_per_ae" value="${ae_model.productivity_per_ae || ''}" step="1" min="0" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Ramp Duration (days)</label>
-            ${generate_tooltip('ramp_duration_days')}
+            ${generate_field_label('Ramp Duration (days)', 'ramp_duration_days')}
             <div class="field-input">
               <input type="number" name="ramp_duration_days" value="${ae_model.ramp?.duration_days || ''}" step="1" min="0" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Mentoring Overhead</label>
-            ${generate_tooltip('mentoring_overhead')}
+            ${generate_field_label('Mentoring Overhead', 'mentoring_overhead')}
             <div class="field-input">
               <input type="number" name="mentoring_overhead" value="${ae_model.mentoring?.overhead_pct_per_new_hire || ''}" step="0.01" min="0" max="1" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Max Mentees per AE</label>
-            ${generate_tooltip('max_mentees_per_ae')}
+            ${generate_field_label('Max Mentees per AE', 'max_mentees_per_ae')}
             <div class="field-input">
               <input type="number" name="max_mentees_per_ae" value="${ae_model.mentoring?.max_mentees_per_ae || ''}" step="1" min="1" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">PTO %</label>
-            ${generate_tooltip('pto_pct')}
+            ${generate_field_label('PTO %', 'pto_pct')}
             <div class="field-input">
               <input type="number" name="pto_pct" value="${ae_model.shrinkage?.pto_pct || ''}" step="0.01" min="0" max="1" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Admin %</label>
-            ${generate_tooltip('admin_pct')}
+            ${generate_field_label('Admin %', 'admin_pct')}
             <div class="field-input">
               <input type="number" name="admin_pct" value="${ae_model.shrinkage?.admin_pct || ''}" step="0.01" min="0" max="1" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Enablement Base %</label>
-            ${generate_tooltip('enablement_base_pct')}
+            ${generate_field_label('Enablement Base %', 'enablement_base_pct')}
             <div class="field-input">
               <input type="number" name="enablement_base_pct" value="${ae_model.shrinkage?.enablement_base_pct || ''}" step="0.01" min="0" max="1" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Enablement Scaling</label>
-            ${generate_tooltip('enablement_scaling')}
+            ${generate_field_label('Enablement Scaling', 'enablement_scaling')}
             <div class="field-input">
               <select name="enablement_scaling">
                 <option value="proportional" ${ae_model.shrinkage?.enablement_scaling === 'proportional' ? 'selected' : ''}>Proportional</option>
@@ -828,36 +821,46 @@
           </div>
 
           <div class="form-field">
-            <label class="field-label">Attrition Rate</label>
-            ${generate_tooltip('attrition_rate')}
+            ${generate_field_label('Attrition Rate', 'attrition_rate')}
             <div class="field-input">
               <input type="number" name="attrition_rate" value="${ae_model.attrition?.annual_rate || ''}" step="0.01" min="0" max="1" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Backfill Delay (months)</label>
-            ${generate_tooltip('backfill_delay_months')}
+            ${generate_field_label('Backfill Delay (months)', 'backfill_delay_months')}
             <div class="field-input">
               <input type="number" name="backfill_delay_months" value="${ae_model.attrition?.backfill_delay_months || ''}" step="1" min="0" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Stretch Threshold</label>
-            ${generate_tooltip('stretch_threshold')}
+            ${generate_field_label('Stretch Threshold', 'stretch_threshold')}
             <div class="field-input">
               <input type="number" name="stretch_threshold" value="${ae_model.stretch_threshold || ''}" step="0.01" min="1" required>
             </div>
+          </div>
+        </div>
+
+        <div class="form-subsection">
+          <div class="subsection-header-row">
+            <h4>Hiring Tranches</h4>
+            ${generate_tooltip('hiring_plan')}
+          </div>
+          <input type="hidden" id="aeHiringTrancheCount" value="${hiring_plan.length}">
+          <div class="tranche-scroll-wrap">
+            <div class="tranche-scroll" id="trancheScroll">
+              ${hiring_plan.map((tranche, index) => generate_tranche_card(index, tranche)).join('')}
+            </div>
+          </div>
+          <div class="tranche-actions">
+            <button type="button" class="btn btn-secondary" id="addTrancheBtn">+ Add Tranche</button>
           </div>
         </div>
       </div>
     `;
   }
 
-  /**
-   * Generate What-If Scenarios section
-   */
   function generate_what_if_section() {
     const config = FORM_STATE.config_schema;
     const scenarios = config.what_if_scenarios || [];
@@ -877,10 +880,10 @@
 
         <div class="scenarios-grid">
           ${scenarios.map((scenario, index) => `
-            <div class="scenario-card">
+            <div class="scenario-card" data-scenario-index="${index}">
               <div class="scenario-header">
                 <div class="scenario-title">
-                  <h4>${scenario.name || `Scenario ${index + 1}`}</h4>
+                  <h4>${get_display_scenario_name(scenario.name) || `Scenario ${index + 1}`}</h4>
                   <p class="scenario-description">${scenario.description || ''}</p>
                 </div>
                 <label class="toggle-switch">
@@ -889,6 +892,9 @@
                 </label>
               </div>
               ${generate_tooltip('scenario_enabled')}
+              <div class="scenario-perturbations">
+                ${generate_scenario_perturbations(scenario, index)}
+              </div>
             </div>
           `).join('')}
         </div>
@@ -896,9 +902,6 @@
     `;
   }
 
-  /**
-   * Generate System section
-   */
   function generate_system_section() {
     const config = FORM_STATE.config_schema;
     const system = config.system || {};
@@ -918,16 +921,14 @@
 
         <div class="form-grid">
           <div class="form-field">
-            <label class="field-label">Output Directory</label>
-            ${generate_tooltip('output_dir')}
+            ${generate_field_label('Output Directory', 'output_dir')}
             <div class="field-input">
               <input type="text" name="output_dir" value="${system.output_dir || ''}" required>
             </div>
           </div>
 
           <div class="form-field">
-            <label class="field-label">Solver Method</label>
-            ${generate_tooltip('solver_method')}
+            ${generate_field_label('Solver Method', 'solver_method')}
             <div class="field-input">
               <select name="solver_method">
                 <option value="SLSQP" ${system.solver?.method === 'SLSQP' ? 'selected' : ''}>SLSQP</option>
@@ -937,8 +938,7 @@
           </div>
 
           <div class="form-field">
-            <label class="field-label">Max Iterations</label>
-            ${generate_tooltip('solver_max_iterations')}
+            ${generate_field_label('Max Iterations', 'solver_max_iterations')}
             <div class="field-input">
               <input type="number" name="solver_max_iterations" value="${system.solver?.max_iterations || ''}" step="1" min="1" required>
             </div>
@@ -948,81 +948,414 @@
     `;
   }
 
-  /**
-   * Generate tooltip element
-   */
+  function generate_field_label(label_text, field_key) {
+    return `
+      <div class="field-label-row">
+        <label class="field-label">${label_text}</label>
+        ${generate_tooltip(field_key)}
+      </div>
+    `;
+  }
+
   function generate_tooltip(field_key) {
     const tooltip = TOOLTIPS[field_key];
     if (!tooltip) return '';
 
     return `
-      <div class="tooltip">
+      <button type="button" class="tooltip-trigger" data-tooltip-key="${field_key}" aria-label="Open help for ${field_key}">
         <svg class="tooltip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"/>
           <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
           <line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
-        <div class="tooltip-content">
-          <strong>${tooltip.title}</strong>
-          <p>${tooltip.description}</p>
-          <p><strong>Impact:</strong> ${tooltip.impact}</p>
-          <p><strong>Example:</strong> ${tooltip.example}</p>
-        </div>
-      </div>
+      </button>
     `;
   }
 
-  /**
-   * Format label for display
-   */
+  function get_tooltip_html(field_key) {
+    const tooltip = TOOLTIPS[field_key];
+    if (!tooltip) {
+      return '';
+    }
+    return `
+      <strong>${tooltip.title}</strong>
+      <p>${tooltip.description}</p>
+      <p><strong>Impact:</strong> ${tooltip.impact}</p>
+      <p><strong>Example:</strong> ${tooltip.example}</p>
+    `;
+  }
+
   function format_label(key) {
     return key
       .replace(/_/g, ' ')
       .replace(/\b\w/g, l => l.toUpperCase());
   }
 
-  /**
-   * Setup event listeners
-   */
+  function to_percent(value) {
+    return Number(((parseFloat(value) || 0) * 100).toFixed(1));
+  }
+
+  function build_month_options(selected_month) {
+    return Array.from({ length: 12 }, (_, index) => {
+      const month_number = index + 1;
+      return `<option value="${month_number}" ${selected_month === month_number ? 'selected' : ''}>Month ${month_number}</option>`;
+    }).join('');
+  }
+
+  function get_rolling_start_month(targets) {
+    if (targets.planning_mode === 'rolling_forward' && Array.isArray(targets.locked_months) && targets.locked_months.length) {
+      const max_locked = Math.max(...targets.locked_months);
+      const next_month = Math.min(max_locked + 1, 12);
+      return Number.isFinite(next_month) ? next_month : 1;
+    }
+    return 1;
+  }
+
+  function generate_tranche_card(index, tranche) {
+    const count = parseInt(tranche.count, 10) || 0;
+    const start_month = parseInt(tranche.start_month, 10) || 1;
+    return `
+      <div class="hiring-tranche" data-tranche-index="${index}">
+        <div class="hiring-tranche-head">
+          <span class="hiring-tranche-title">Tranche ${index + 1}</span>
+          <button type="button" class="remove-tranche-btn" data-tranche-remove="${index}" ${index < 3 ? 'disabled' : ''}>×</button>
+        </div>
+        <div class="form-field">
+          <label class="field-label">Count</label>
+          <div class="field-input">
+            <input type="number" class="tranche-count-input" min="0" step="1" value="${count}">
+          </div>
+        </div>
+        <div class="form-field">
+          <label class="field-label">Start Month</label>
+          <div class="field-input">
+            <select class="tranche-month-input">
+              ${build_month_options(start_month)}
+            </select>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function generate_scenario_perturbations(scenario, scenario_index) {
+    const perturbations = scenario.perturbations || {};
+    return Object.entries(perturbations).map(([perturbation_key, perturbation_value], perturbation_index) => {
+      const key_field = `<input type="hidden" name="scenario_${scenario_index}_perturbation_${perturbation_index}_key" value="${perturbation_key}">`;
+      if (Array.isArray(perturbation_value)) {
+        return `
+          <div class="scenario-perturbation-field">
+            <label class="field-label">${format_label(perturbation_key)}</label>
+            ${key_field}
+            <input type="text" name="scenario_${scenario_index}_perturbation_${perturbation_index}_list" value="${perturbation_value.join(', ')}">
+          </div>
+        `;
+      }
+
+      if (typeof perturbation_value === 'object' && perturbation_value !== null) {
+        const entries = Object.entries(perturbation_value);
+        return `
+          <div class="scenario-perturbation-field">
+            <label class="field-label">${format_label(perturbation_key)}</label>
+            ${key_field}
+            <input type="hidden" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_count" value="${entries.length}">
+            <div class="scenario-map-editor" data-scenario-index="${scenario_index}" data-perturbation-index="${perturbation_index}">
+              ${entries.map(([map_key, map_value], entry_index) => `
+                <div class="scenario-map-row">
+                  <input type="text" class="scenario-map-key" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_key_${entry_index}" value="${map_key}">
+                  <input type="number" step="0.01" class="scenario-map-value" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_value_${entry_index}" value="${map_value}">
+                  <button type="button" class="scenario-map-remove">×</button>
+                </div>
+              `).join('')}
+            </div>
+            <button type="button" class="btn btn-secondary add-scenario-map-entry" data-scenario-index="${scenario_index}" data-perturbation-index="${perturbation_index}">+ Add ${format_label(perturbation_key)} entry</button>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="scenario-perturbation-field">
+          <label class="field-label">${format_label(perturbation_key)}</label>
+          ${key_field}
+          <input type="${typeof perturbation_value === 'number' ? 'number' : 'text'}" ${typeof perturbation_value === 'number' ? 'step="0.01"' : ''} name="scenario_${scenario_index}_perturbation_${perturbation_index}_value" value="${perturbation_value}">
+        </div>
+      `;
+    }).join('');
+  }
+
+  function get_display_scenario_name(name) {
+    const overrides = {
+      'EOR pricing pressure': 'Pricing Pressure',
+      'Q2 attrition spike': 'Attrition Spike',
+      'Marketing budget cut': 'Channel Budget Cut'
+    };
+    return overrides[name] || name;
+  }
+
   function setup_event_listeners() {
     const form = document.getElementById('configForm');
     if (!form) return;
 
-    // Form submission - prevent duplicate listeners
     if (!form.hasAttribute('data-submit-listener')) {
       form.addEventListener('submit', handle_form_submit);
       form.setAttribute('data-submit-listener', 'true');
     }
 
-    // Reset button
     const resetBtn = document.getElementById('resetBtn');
     if (resetBtn && !resetBtn.hasAttribute('data-reset-listener')) {
       resetBtn.addEventListener('click', handle_reset);
       resetBtn.setAttribute('data-reset-listener', 'true');
     }
 
+    const planning_mode_select = document.getElementById('planningModeSelect');
+    if (planning_mode_select && !planning_mode_select.hasAttribute('data-planning-listener')) {
+      planning_mode_select.addEventListener('change', update_planning_mode_controls);
+      planning_mode_select.setAttribute('data-planning-listener', 'true');
+    }
+
+    form.addEventListener('input', event => {
+      if (event.target?.classList?.contains('seasonality-input')) {
+        update_seasonality_sum();
+      }
+    });
+
+    const add_tranche_btn = document.getElementById('addTrancheBtn');
+    if (add_tranche_btn && !add_tranche_btn.hasAttribute('data-tranche-listener')) {
+      add_tranche_btn.addEventListener('click', add_hiring_tranche);
+      add_tranche_btn.setAttribute('data-tranche-listener', 'true');
+    }
+
+    form.addEventListener('click', event => {
+      const remove_tranche_btn = event.target.closest('.remove-tranche-btn');
+      if (remove_tranche_btn && !remove_tranche_btn.disabled) {
+        remove_tranche_btn.closest('.hiring-tranche')?.remove();
+        reindex_hiring_tranches();
+        sync_hiring_tranche_count();
+        return;
+      }
+
+      const add_map_entry_btn = event.target.closest('.add-scenario-map-entry');
+      if (add_map_entry_btn) {
+        add_scenario_map_entry(add_map_entry_btn);
+        return;
+      }
+
+      const remove_map_entry_btn = event.target.closest('.scenario-map-remove');
+      if (remove_map_entry_btn) {
+        const editor = remove_map_entry_btn.closest('.scenario-map-editor');
+        remove_map_entry_btn.closest('.scenario-map-row')?.remove();
+        sync_scenario_map_count(editor);
+      }
+    });
+
+    setup_tooltip_system();
   }
 
-  /**
-   * Validate entire form with detailed error reporting
-   */
+  function setup_tooltip_system() {
+    if (FORM_STATE.tooltip_listeners_initialized) {
+      return;
+    }
+    if (!FORM_STATE.tooltip_popup) {
+      const tooltip_popup = document.createElement('div');
+      tooltip_popup.id = 'floatingTooltip';
+      tooltip_popup.className = 'floating-tooltip hidden';
+      document.body.appendChild(tooltip_popup);
+      FORM_STATE.tooltip_popup = tooltip_popup;
+    }
+
+    document.addEventListener('mouseover', event => {
+      const trigger = event.target.closest('.tooltip-trigger');
+      if (!trigger) return;
+      show_tooltip(trigger);
+    });
+
+    document.addEventListener('focusin', event => {
+      const trigger = event.target.closest('.tooltip-trigger');
+      if (!trigger) return;
+      show_tooltip(trigger);
+    });
+
+    document.addEventListener('mouseout', event => {
+      const trigger = event.target.closest('.tooltip-trigger');
+      if (!trigger) return;
+      const related = event.relatedTarget;
+      if (related && related.closest('.tooltip-trigger') === trigger) {
+        return;
+      }
+      hide_tooltip();
+    });
+
+    document.addEventListener('focusout', event => {
+      if (event.target.closest('.tooltip-trigger')) {
+        hide_tooltip();
+      }
+    });
+
+    window.addEventListener('scroll', hide_tooltip, true);
+    window.addEventListener('resize', hide_tooltip);
+    document.addEventListener('click', event => {
+      if (!event.target.closest('.tooltip-trigger')) {
+        hide_tooltip();
+      }
+    });
+    FORM_STATE.tooltip_listeners_initialized = true;
+  }
+
+  function show_tooltip(trigger) {
+    const field_key = trigger.getAttribute('data-tooltip-key');
+    const tooltip_html = get_tooltip_html(field_key);
+    if (!tooltip_html || !FORM_STATE.tooltip_popup) {
+      return;
+    }
+
+    FORM_STATE.tooltip_popup.innerHTML = tooltip_html;
+    FORM_STATE.tooltip_popup.classList.remove('hidden');
+    position_tooltip(trigger);
+  }
+
+  function hide_tooltip() {
+    if (FORM_STATE.tooltip_popup) {
+      FORM_STATE.tooltip_popup.classList.add('hidden');
+    }
+  }
+
+  function position_tooltip(trigger) {
+    if (!FORM_STATE.tooltip_popup) return;
+    const popup = FORM_STATE.tooltip_popup;
+    const trigger_rect = trigger.getBoundingClientRect();
+    const popup_rect = popup.getBoundingClientRect();
+    const viewport_width = window.innerWidth;
+    const viewport_height = window.innerHeight;
+    const spacing = 10;
+
+    let top = trigger_rect.bottom + spacing;
+    let left = trigger_rect.left + (trigger_rect.width / 2) - (popup_rect.width / 2);
+
+    if (left < spacing) {
+      left = spacing;
+    } else if (left + popup_rect.width > viewport_width - spacing) {
+      left = viewport_width - popup_rect.width - spacing;
+    }
+
+    if (top + popup_rect.height > viewport_height - spacing) {
+      top = trigger_rect.top - popup_rect.height - spacing;
+    }
+
+    if (top < spacing) {
+      top = spacing;
+    }
+
+    popup.style.top = `${top + window.scrollY}px`;
+    popup.style.left = `${left + window.scrollX}px`;
+  }
+
+  function update_planning_mode_controls() {
+    const select = document.getElementById('planningModeSelect');
+    const rolling_controls = document.getElementById('rollingForwardControls');
+    const manual_controls = document.getElementById('manualLockControls');
+    if (!select || !rolling_controls || !manual_controls) {
+      return;
+    }
+
+    const mode = select.value;
+    rolling_controls.classList.toggle('hidden', mode !== 'rolling_forward');
+    manual_controls.classList.toggle('hidden', mode !== 'manual_lock');
+  }
+
+  function update_seasonality_sum() {
+    const inputs = document.querySelectorAll('.seasonality-input');
+    const sum_badge = document.getElementById('seasonalitySumBadge');
+    const sum_value = document.getElementById('seasonalitySumValue');
+    if (!sum_badge || !sum_value) {
+      return;
+    }
+
+    let total = 0;
+    inputs.forEach(input => {
+      total += parseFloat(input.value) || 0;
+    });
+    sum_value.textContent = `${total.toFixed(1)}%`;
+    sum_badge.classList.toggle('seasonality-over-limit', total > 100);
+    sum_badge.classList.toggle('seasonality-valid', Math.abs(total - 100) <= 0.1);
+  }
+
+  function add_hiring_tranche() {
+    const container = document.getElementById('trancheScroll');
+    if (!container) return;
+    const next_index = container.querySelectorAll('.hiring-tranche').length;
+    container.insertAdjacentHTML('beforeend', generate_tranche_card(next_index, { count: 0, start_month: 1 }));
+    reindex_hiring_tranches();
+    sync_hiring_tranche_count();
+    const last_tranche = container.querySelector('.hiring-tranche:last-child');
+    if (last_tranche) {
+      last_tranche.scrollIntoView({ behavior: 'smooth', inline: 'end', block: 'nearest' });
+    }
+  }
+
+  function reindex_hiring_tranches() {
+    const tranches = document.querySelectorAll('.hiring-tranche');
+    tranches.forEach((tranche, index) => {
+      tranche.setAttribute('data-tranche-index', index);
+      const title = tranche.querySelector('.hiring-tranche-title');
+      if (title) {
+        title.textContent = `Tranche ${index + 1}`;
+      }
+      const remove_btn = tranche.querySelector('.remove-tranche-btn');
+      if (remove_btn) {
+        remove_btn.setAttribute('data-tranche-remove', index);
+        remove_btn.disabled = index < 3;
+      }
+    });
+  }
+
+  function sync_hiring_tranche_count() {
+    const count_input = document.getElementById('aeHiringTrancheCount');
+    if (count_input) {
+      count_input.value = document.querySelectorAll('.hiring-tranche').length;
+    }
+  }
+
+  function add_scenario_map_entry(button) {
+    const scenario_index = button.getAttribute('data-scenario-index');
+    const perturbation_index = button.getAttribute('data-perturbation-index');
+    const editor = document.querySelector(`.scenario-map-editor[data-scenario-index="${scenario_index}"][data-perturbation-index="${perturbation_index}"]`);
+    if (!editor) return;
+    const next_index = editor.querySelectorAll('.scenario-map-row').length;
+    editor.insertAdjacentHTML('beforeend', `
+      <div class="scenario-map-row">
+        <input type="text" class="scenario-map-key" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_key_${next_index}" value="">
+        <input type="number" step="0.01" class="scenario-map-value" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_value_${next_index}" value="1">
+        <button type="button" class="scenario-map-remove">×</button>
+      </div>
+    `);
+    sync_scenario_map_count(editor);
+  }
+
+  function sync_scenario_map_count(editor) {
+    if (!editor) return;
+    const scenario_index = editor.getAttribute('data-scenario-index');
+    const perturbation_index = editor.getAttribute('data-perturbation-index');
+    const count_input = document.querySelector(`[name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_count"]`);
+    if (count_input) {
+      count_input.value = editor.querySelectorAll('.scenario-map-row').length;
+    }
+  }
+
   function validate_form() {
     const form = document.getElementById('configForm');
     if (!form) return false;
 
-    // Check seasonality weights sum
-    const seasonality_inputs = form.querySelectorAll('[name^="seasonality_"]');
-    let seasonality_sum = 0;
+    const seasonality_inputs = form.querySelectorAll('.seasonality-input');
+    let seasonality_sum_pct = 0;
     seasonality_inputs.forEach(input => {
-      seasonality_sum += parseFloat(input.value) || 0;
+      seasonality_sum_pct += parseFloat(input.value) || 0;
     });
 
-    if (Math.abs(seasonality_sum - 1.0) > 0.001) {
-      show_error('Seasonality weights must sum to 1.0.\n\nCurrent sum: ' + seasonality_sum.toFixed(3) + '\n\nPlease adjust the monthly weights so they add up to 1.0.');
+    if (Math.abs(seasonality_sum_pct - 100) > 0.1) {
+      show_error('Seasonality weights must sum to 100%.\n\nCurrent sum: ' + seasonality_sum_pct.toFixed(1) + '%\n\nPlease adjust the monthly weights so they add up to 100%.');
       return false;
     }
 
-    // Check share floor <= share ceiling
     const share_floor = parseFloat(form.querySelector('[name="share_floor"]')?.value);
     const share_ceiling = parseFloat(form.querySelector('[name="share_ceiling"]')?.value);
     if (share_floor >= share_ceiling) {
@@ -1030,45 +1363,189 @@
       return false;
     }
 
+    const planning_mode = form.querySelector('[name="planning_mode"]')?.value;
+    if (planning_mode === 'manual_lock') {
+      const locked_months = Array.from(form.querySelectorAll('[name^="locked_month_"]:checked'));
+      if (!locked_months.length) {
+        show_error('Manual lock mode requires at least one locked month.');
+        return false;
+      }
+    }
+
     return form.checkValidity();
   }
 
-  /**
-   * Collect form data
-   */
   function collect_form_data() {
     const form = document.getElementById('configForm');
-    if (!form) return null;
+    const schema = FORM_STATE.config_schema;
+    if (!form || !schema) return null;
 
-    const formData = new FormData(form);
-    const data = {};
+    const config_payload = JSON.parse(JSON.stringify(schema));
 
-    formData.forEach((value, key) => {
-      data[key] = value;
+    Object.entries(config_payload.dimensions || {}).forEach(([dimension_key, dimension_config]) => {
+      dimension_config.enabled = !!form.querySelector(`[name="${dimension_key}_enabled"]`)?.checked;
     });
 
-    return data;
+    const targets = config_payload.targets || {};
+    targets.annual_target = parseFloat(form.querySelector('[name="annual_target"]')?.value || 0);
+    targets.growth_rate = parseFloat(form.querySelector('[name="growth_rate"]')?.value || 0);
+    targets.target_source = form.querySelector('[name="target_source"]')?.value || 'growth';
+    targets.planning_mode = form.querySelector('[name="planning_mode"]')?.value || 'full_year';
+
+    const seasonality_weights = {};
+    form.querySelectorAll('.seasonality-input').forEach(input => {
+      const month_key = input.name.replace('seasonality_pct_', '');
+      seasonality_weights[month_key] = (parseFloat(input.value) || 0) / 100;
+    });
+    targets.seasonality_weights = seasonality_weights;
+
+    if (targets.planning_mode === 'manual_lock') {
+      targets.locked_months = Array.from(form.querySelectorAll('[name^="locked_month_"]:checked')).map(input => parseInt(input.name.replace('locked_month_', ''), 10)).filter(Number.isFinite);
+    } else if (targets.planning_mode === 'rolling_forward') {
+      const start_month = parseInt(form.querySelector('[name="rolling_start_month"]')?.value || '1', 10);
+      targets.locked_months = Array.from({ length: Math.max(start_month - 1, 0) }, (_, index) => index + 1);
+    } else {
+      targets.locked_months = [];
+    }
+
+    const actuals_file_value = (form.querySelector('[name="actuals_file"]')?.value || '').trim();
+    targets.actuals_file = actuals_file_value || null;
+    config_payload.targets = targets;
+
+    const allocation = config_payload.allocation || {};
+    allocation.objective = allocation.objective || {};
+    allocation.constraints = allocation.constraints || {};
+    allocation.objective.metric = form.querySelector('[name="objective_metric"]')?.value || 'bookings';
+    allocation.optimizer_mode = form.querySelector('[name="optimizer_mode"]')?.value || 'solver';
+    allocation.constraints.share_floor = parseFloat(form.querySelector('[name="share_floor"]')?.value || 0);
+    allocation.constraints.share_ceiling = parseFloat(form.querySelector('[name="share_ceiling"]')?.value || 0);
+    config_payload.allocation = allocation;
+
+    const economics = config_payload.economics || {};
+    economics.default_decay = economics.default_decay || {};
+    economics.default_decay.asp = economics.default_decay.asp || {};
+    economics.default_decay.win_rate = economics.default_decay.win_rate || {};
+    economics.cash_cycle = economics.cash_cycle || {};
+    economics.use_calibration = !!form.querySelector('[name="use_calibration"]')?.checked;
+    economics.cash_cycle.enabled = !!form.querySelector('[name="cash_cycle_enabled"]')?.checked;
+    economics.default_decay.asp.function = form.querySelector('[name="asp_decay_function"]')?.value || 'exponential';
+    economics.default_decay.asp.rate = parseFloat(form.querySelector('[name="asp_decay_rate"]')?.value || 0);
+    economics.default_decay.asp.threshold = parseFloat(form.querySelector('[name="asp_threshold"]')?.value || 0);
+    economics.default_decay.asp.floor_multiplier = parseFloat(form.querySelector('[name="asp_floor_multiplier"]')?.value || 0);
+    economics.default_decay.win_rate.function = form.querySelector('[name="win_rate_decay_function"]')?.value || 'linear';
+    economics.default_decay.win_rate.rate = parseFloat(form.querySelector('[name="win_rate_decay_rate"]')?.value || 0);
+    economics.default_decay.win_rate.threshold = parseFloat(form.querySelector('[name="win_rate_threshold"]')?.value || 0);
+    economics.default_decay.win_rate.floor_multiplier = parseFloat(form.querySelector('[name="win_rate_floor_multiplier"]')?.value || 0);
+    config_payload.economics = economics;
+
+    const ae_model = config_payload.ae_model || {};
+    ae_model.ramp = ae_model.ramp || {};
+    ae_model.mentoring = ae_model.mentoring || {};
+    ae_model.shrinkage = ae_model.shrinkage || {};
+    ae_model.attrition = ae_model.attrition || {};
+    ae_model.starting_hc = parseInt(form.querySelector('[name="starting_hc"]')?.value || 0, 10);
+    ae_model.productivity_per_ae = parseFloat(form.querySelector('[name="productivity_per_ae"]')?.value || 0);
+    ae_model.ramp.duration_days = parseInt(form.querySelector('[name="ramp_duration_days"]')?.value || 0, 10);
+    ae_model.mentoring.overhead_pct_per_new_hire = parseFloat(form.querySelector('[name="mentoring_overhead"]')?.value || 0);
+    ae_model.mentoring.max_mentees_per_ae = parseInt(form.querySelector('[name="max_mentees_per_ae"]')?.value || 0, 10);
+    ae_model.shrinkage.pto_pct = parseFloat(form.querySelector('[name="pto_pct"]')?.value || 0);
+    ae_model.shrinkage.admin_pct = parseFloat(form.querySelector('[name="admin_pct"]')?.value || 0);
+    ae_model.shrinkage.enablement_base_pct = parseFloat(form.querySelector('[name="enablement_base_pct"]')?.value || 0);
+    ae_model.shrinkage.enablement_scaling = form.querySelector('[name="enablement_scaling"]')?.value || 'fixed';
+    ae_model.attrition.annual_rate = parseFloat(form.querySelector('[name="attrition_rate"]')?.value || 0);
+    ae_model.attrition.backfill_delay_months = parseInt(form.querySelector('[name="backfill_delay_months"]')?.value || 0, 10);
+    ae_model.stretch_threshold = parseFloat(form.querySelector('[name="stretch_threshold"]')?.value || 1);
+
+    const hiring_plan = [];
+    form.querySelectorAll('.hiring-tranche').forEach(tranche => {
+      const count = parseInt(tranche.querySelector('.tranche-count-input')?.value || 0, 10);
+      const start_month = parseInt(tranche.querySelector('.tranche-month-input')?.value || 1, 10);
+      if (Number.isFinite(count) && Number.isFinite(start_month)) {
+        hiring_plan.push({ count, start_month });
+      }
+    });
+    ae_model.hiring_plan = hiring_plan;
+    config_payload.ae_model = ae_model;
+
+    const scenarios = (config_payload.what_if_scenarios || []).map((scenario, scenario_index) => {
+      const next_scenario = JSON.parse(JSON.stringify(scenario));
+      next_scenario.enabled = !!form.querySelector(`[name="scenario_${scenario_index}_enabled"]`)?.checked;
+      const perturbations = scenario.perturbations || {};
+      const next_perturbations = {};
+      Object.entries(perturbations).forEach(([perturbation_key, perturbation_value], perturbation_index) => {
+        if (Array.isArray(perturbation_value)) {
+          const list_value = form.querySelector(`[name="scenario_${scenario_index}_perturbation_${perturbation_index}_list"]`)?.value || '';
+          next_perturbations[perturbation_key] = list_value
+            .split(',')
+            .map(item => item.trim())
+            .filter(Boolean)
+            .map(item => {
+              const parsed = Number(item);
+              return Number.isFinite(parsed) ? parsed : item;
+            });
+          return;
+        }
+
+        if (typeof perturbation_value === 'object' && perturbation_value !== null) {
+          const map_count = parseInt(form.querySelector(`[name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_count"]`)?.value || '0', 10);
+          const map_value = {};
+          for (let map_index = 0; map_index < map_count; map_index++) {
+            const key_input = form.querySelector(`[name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_key_${map_index}"]`);
+            const value_input = form.querySelector(`[name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_value_${map_index}"]`);
+            if (!key_input || !value_input) continue;
+            const map_key = key_input.value.trim();
+            if (!map_key) continue;
+            const parsed_value = parseFloat(value_input.value);
+            map_value[map_key] = Number.isFinite(parsed_value) ? parsed_value : 0;
+          }
+          next_perturbations[perturbation_key] = map_value;
+          return;
+        }
+
+        const scalar_input = form.querySelector(`[name="scenario_${scenario_index}_perturbation_${perturbation_index}_value"]`)?.value;
+        if (typeof perturbation_value === 'number') {
+          const parsed_scalar = parseFloat(scalar_input);
+          next_perturbations[perturbation_key] = Number.isFinite(parsed_scalar) ? parsed_scalar : perturbation_value;
+          return;
+        }
+        const cleaned_scalar = typeof scalar_input === 'string' ? scalar_input.trim() : '';
+        next_perturbations[perturbation_key] = cleaned_scalar || perturbation_value;
+      });
+      next_scenario.perturbations = next_perturbations;
+      return next_scenario;
+    });
+    config_payload.what_if_scenarios = scenarios;
+
+    const system = config_payload.system || {};
+    system.solver = system.solver || {};
+    system.output_dir = form.querySelector('[name="output_dir"]')?.value || system.output_dir;
+    system.solver.method = form.querySelector('[name="solver_method"]')?.value || system.solver.method;
+    system.solver.max_iterations = parseInt(form.querySelector('[name="solver_max_iterations"]')?.value || system.solver.max_iterations || 1000, 10);
+    config_payload.system = system;
+
+    return {
+      description: 'UI Run',
+      mode: 'full',
+      optimizer: allocation.optimizer_mode || 'solver',
+      annual_target: targets.annual_target,
+      auto_start_charts: true,
+      config_updates: config_payload
+    };
   }
 
-  /**
-   * Handle form submission
-   */
   async function handle_form_submit(event) {
     event.preventDefault();
 
-    // Validate form
     if (!validate_form()) {
       return;
     }
 
-    // Collect form data
     const form_data = collect_form_data();
     if (!form_data) {
       console.error('Config Form - Failed to collect form data');
       return;
     }
 
-    // Show loading overlay with progress simulation
     if (typeof LoadingOverlay !== 'undefined' && LoadingOverlay.show) {
       LoadingOverlay.show({
         status: 'Initializing...',
@@ -1078,7 +1555,6 @@
     }
 
     try {
-      // Submit to backend
       const response = await fetch('/api/run-plan', {
         method: 'POST',
         headers: {
@@ -1090,14 +1566,14 @@
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || 'Plan execution failed');
+        const error_text = result.details ? `${result.error || 'Plan execution failed'}\n\n${result.details}` : (result.error || 'Plan execution failed');
+        throw new Error(error_text);
       }
 
       if (typeof Logger !== 'undefined' && Logger.debug) {
         Logger.debug('ConfigForm', 'Plan executed successfully');
       }
 
-      // Dispatch plan completion event for ChartViewer to handle
       const plan_complete_event = new CustomEvent('plancomplete', {
         detail: {
           version_id: result.version_id,
@@ -1107,7 +1583,6 @@
       });
       document.dispatchEvent(plan_complete_event);
 
-      // Complete loading overlay and switch to charts tab
       if (typeof LoadingOverlay !== 'undefined' && LoadingOverlay.complete) {
         LoadingOverlay.complete(() => {
           if (typeof TabManager !== 'undefined') {
@@ -1120,16 +1595,12 @@
       console.error('Config Form - Plan execution failed:', error);
       alert('Failed to run plan: ' + error.message);
 
-      // Hide loading overlay on error
       if (typeof LoadingOverlay !== 'undefined' && LoadingOverlay.hide) {
         LoadingOverlay.hide();
       }
     }
   }
 
-  /**
-   * Handle reset to defaults
-   */
   async function handle_reset() {
     if (!confirm('Are you sure you want to reset all fields to their default values?')) {
       return;
@@ -1143,11 +1614,13 @@
 
       const defaults = await response.json();
 
-      // Update form fields with defaults
       if (FORM_STATE.config_schema) {
         FORM_STATE.config_schema = defaults;
         generate_form();
         setup_event_listeners();
+        update_seasonality_sum();
+        update_planning_mode_controls();
+        sync_hiring_tranche_count();
       }
 
     } catch (error) {
@@ -1156,9 +1629,6 @@
     }
   }
 
-  /**
-   * Public API for the Config Form
-   */
   window.ConfigForm = {
     initialize: initialize,
     is_loaded: () => FORM_STATE.is_loaded,

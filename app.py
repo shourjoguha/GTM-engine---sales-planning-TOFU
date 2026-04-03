@@ -187,6 +187,46 @@ def parse_timestamp_to_epoch(value):
     return int(datetime.now().timestamp())
 
 
+def deep_merge_dict(base, updates):
+    if not isinstance(base, dict) or not isinstance(updates, dict):
+        return updates
+    merged = dict(base)
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def normalize_cash_cycle_distribution_keys(config):
+    economics = config.get("economics")
+    if not isinstance(economics, dict):
+        return
+    cash_cycle = economics.get("cash_cycle")
+    if not isinstance(cash_cycle, dict):
+        return
+
+    def normalize_distribution(distribution):
+        if not isinstance(distribution, dict):
+            return distribution
+        normalized = {}
+        for key, value in distribution.items():
+            normalized_key = key
+            if isinstance(key, str) and key.isdigit():
+                normalized_key = int(key)
+            normalized[normalized_key] = value
+        return normalized
+
+    cash_cycle["default_distribution"] = normalize_distribution(cash_cycle.get("default_distribution"))
+    product_overrides = cash_cycle.get("product_overrides")
+    if isinstance(product_overrides, dict):
+        cash_cycle["product_overrides"] = {
+            product: normalize_distribution(distribution)
+            for product, distribution in product_overrides.items()
+        }
+
+
 # Register cleanup on exit
 atexit.register(cleanup_all_chart_servers)
 
@@ -282,22 +322,33 @@ def download_version_file(version_id, filename):
 @app.route('/api/run-plan', methods=['POST'])
 def run_plan():
     try:
-        data = request.json
+        data = request.json or {}
         description = data.get('description', 'API Run')
         annual_target = data.get('annual_target', 188000000)
         mode = data.get('mode', 'full')
         optimizer = data.get('optimizer', 'greedy')
         auto_start_charts = data.get('auto_start_charts', True)
-        
+
         with open(CONFIG_FILE) as f:
-            config_content = f.read()
-        
-        config_content = config_content.replace('annual_target: 188000000', f'annual_target: {annual_target}')
-        config_content = config_content.replace('optimizer_mode: "solver"', f'optimizer_mode: "{optimizer}"')
-        config_content = config_content.replace('optimizer_mode: "greedy"', f'optimizer_mode: "{optimizer}"')
-        
+            base_config = yaml.safe_load(f) or {}
+
+        config_updates = data.get('config_updates')
+        if isinstance(config_updates, dict) and config_updates:
+            runtime_config = deep_merge_dict(base_config, config_updates)
+        else:
+            runtime_config = deep_merge_dict(base_config, {
+                "targets": {"annual_target": annual_target},
+                "allocation": {"optimizer_mode": optimizer}
+            })
+
+        runtime_config.setdefault("targets", {})
+        runtime_config["targets"]["annual_target"] = annual_target
+        runtime_config.setdefault("allocation", {})
+        runtime_config["allocation"]["optimizer_mode"] = optimizer
+        normalize_cash_cycle_distribution_keys(runtime_config)
+
         temp_config = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
-        temp_config.write(config_content)
+        temp_config.write(yaml.safe_dump(runtime_config, sort_keys=False))
         temp_config.close()
         
         try:

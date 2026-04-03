@@ -13,6 +13,7 @@
     is_loading: false,
     is_fullscreen: false,
     latest_version_id: null,
+    iframe_origin: null,
     cache: {
       versions: null,
       versions_timestamp: 0
@@ -185,6 +186,7 @@
 
     // Listen for tab changes to load charts when switching to charts tab
     document.addEventListener('tabchange', handle_tab_change);
+    window.addEventListener('message', handle_iframe_message);
   }
 
   /**
@@ -394,6 +396,11 @@
 
       // Update state
       CHART_VIEWER_STATE.chart_server_url = chart_url;
+      try {
+        CHART_VIEWER_STATE.iframe_origin = new URL(chart_url).origin;
+      } catch (error) {
+        CHART_VIEWER_STATE.iframe_origin = null;
+      }
 
       // Load charts in iframe
       load_iframe(chart_url);
@@ -416,6 +423,7 @@
 
     // Set iframe source
     DOM.iframe.src = url;
+    DOM.iframe_container.style.height = '';
 
     // Show iframe container
     hide_all_states();
@@ -438,6 +446,21 @@
   function handle_iframe_error() {
     console.error('Charts Viewer - Iframe error');
     show_error('Failed to load charts. The chart server may be unavailable.');
+  }
+
+  function handle_iframe_message(event) {
+    if (!DOM.iframe_container || !event?.data || event.data.type !== 'charts-content-height') {
+      return;
+    }
+    if (CHART_VIEWER_STATE.iframe_origin && event.origin !== CHART_VIEWER_STATE.iframe_origin) {
+      return;
+    }
+    const next_height = parseInt(event.data.height, 10);
+    if (!Number.isFinite(next_height) || next_height <= 0) {
+      return;
+    }
+    const bounded_height = Math.max(520, Math.min(next_height + 12, 2200));
+    DOM.iframe_container.style.height = `${bounded_height}px`;
   }
 
   /**

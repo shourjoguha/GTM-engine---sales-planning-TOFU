@@ -96,6 +96,22 @@ def build_handler(data_dir: Path) -> type[BaseHTTPRequestHandler]:
                 self._send_json(payload)
                 return
 
+            if parsed.path == "/api/recovery-analysis":
+                recovery_path = (data_dir / "recovery_analysis.json").resolve()
+                if recovery_path.parent != data_dir.resolve():
+                    self._send_json({"error": "Unsafe file path"}, status=HTTPStatus.BAD_REQUEST)
+                    return
+                if not recovery_path.exists():
+                    self._send_json({"error": "Recovery analysis not found"}, status=HTTPStatus.NOT_FOUND)
+                    return
+                try:
+                    with recovery_path.open("r", encoding="utf-8") as handle:
+                        recovery_payload = json.load(handle)
+                    self._send_json(recovery_payload)
+                except Exception as exc:
+                    self._send_json({"error": f"Failed to read recovery analysis: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+
             self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
 
     return RequestHandler
@@ -189,6 +205,53 @@ def build_index_html(data_dir: str) -> str:
     .main {{
       width: 100%;
       padding: 32px 32px 100px;
+    }}
+
+    .recommendations-panel {{
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      margin-bottom: 24px;
+      overflow: hidden;
+    }}
+    .recommendations-header {{
+      padding: 18px 24px;
+      border-bottom: 1px solid #f3f4f6;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #fafafa;
+    }}
+    .recommendations-title {{
+      font-size: 22px;
+      font-weight: 600;
+      color: #111827;
+    }}
+    .recommendations-body {{
+      padding: 16px 24px 24px;
+      display: grid;
+      gap: 12px;
+    }}
+    .recommendation-item {{
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: #fff;
+      padding: 12px;
+      font-size: 16px;
+      color: #374151;
+      white-space: pre-wrap;
+    }}
+    .recommendation-label {{
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 6px;
+      display: block;
+    }}
+    .recommendation-empty {{
+      color: #6b7280;
+      font-size: 16px;
     }}
 
     /* ── Tab Bar ── */
@@ -531,7 +594,7 @@ def build_index_html(data_dir: str) -> str:
     .page-btn svg {{ width: 22px; height: 22px; }}
     .table-scroll {{
       overflow: auto;
-      max-height: 600px;
+      max-height: min(65vh, 1000px);
     }}
     .table-scroll::-webkit-scrollbar {{ width: 8px; height: 8px; }}
     .table-scroll::-webkit-scrollbar-track {{ background: transparent; }}
@@ -589,6 +652,16 @@ def build_index_html(data_dir: str) -> str:
 
   <!-- Main Content -->
   <main class="main">
+    <section class="recommendations-panel" id="recommendationsPanel">
+      <div class="recommendations-header">
+        <span class="recommendations-title">Recommendations</span>
+        <span class="table-row-badge" id="recoveryQuarterBadge">Pending</span>
+      </div>
+      <div class="recommendations-body" id="recommendationsBody">
+        <div class="recommendation-empty">Loading recovery analysis...</div>
+      </div>
+    </section>
+
     <div id="tabBar" class="tab-bar"></div>
     <div class="status" id="status"></div>
 
@@ -677,6 +750,8 @@ def build_index_html(data_dir: str) -> str:
     const table_scroll = document.getElementById('tableScroll');
     const row_badge = document.getElementById('rowBadge');
     const page_size_select = document.getElementById('pageSizeSelect');
+    const recommendations_body = document.getElementById('recommendationsBody');
+    const recovery_quarter_badge = document.getElementById('recoveryQuarterBadge');
 
     /* ── Events ── */
     document.getElementById('reloadBtn').addEventListener('click', load_files);
@@ -704,6 +779,14 @@ def build_index_html(data_dir: str) -> str:
     }}
 
     function set_status(msg) {{ status_el.textContent = msg; }}
+
+    function post_parent_height() {{
+      const height = Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight
+      );
+      window.parent.postMessage({{ type: 'charts-content-height', height }}, '*');
+    }}
 
     function escape_html(v) {{
       return v.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
@@ -768,6 +851,7 @@ def build_index_html(data_dir: str) -> str:
     function update_chart_count() {{
       const n = state.charts.length;
       chart_count_el.textContent = `${{n}} ${{n === 1 ? 'Chart' : 'Charts'}}`;
+      post_parent_height();
     }}
 
     /* ── Tabs ── */
@@ -1070,6 +1154,7 @@ def build_index_html(data_dir: str) -> str:
       table_scroll.innerHTML = html;
 
       update_pagination_info();
+      post_parent_height();
     }}
 
     function update_pagination_info() {{
@@ -1087,6 +1172,56 @@ def build_index_html(data_dir: str) -> str:
         document.getElementById('prev' + suffix).disabled = state.page <= 1;
         document.getElementById('next' + suffix).disabled = state.page >= total_pages;
       }}
+    }}
+
+    async function load_recommendations() {{
+      if (!recommendations_body || !recovery_quarter_badge) return;
+      try {{
+        const recovery = await fetch_json('/api/recovery-analysis');
+        const items = [];
+        if (recovery.risk_assessment) {{
+          items.push(`
+            <div class="recommendation-item">
+              <span class="recommendation-label">Risk Assessment</span>
+              ${{escape_html(String(recovery.risk_assessment))}}
+            </div>
+          `);
+        }}
+        if (recovery.mentoring_relief?.recommendation) {{
+          items.push(`
+            <div class="recommendation-item">
+              <span class="recommendation-label">Mentoring Relief</span>
+              ${{escape_html(String(recovery.mentoring_relief.recommendation))}}
+            </div>
+          `);
+        }}
+        if (Array.isArray(recovery.quarterly_summary) && recovery.quarterly_summary.length) {{
+          const worst = recovery.quarterly_summary.reduce((acc, row) => (row.gap > (acc?.gap ?? -Infinity) ? row : acc), null);
+          if (worst) {{
+            items.push(`
+              <div class="recommendation-item">
+                <span class="recommendation-label">Largest Gap</span>
+                Quarter ${{worst.quarter}} shortfall: $${{Number(worst.gap || 0).toLocaleString(undefined, {{ maximumFractionDigits: 0 }})}}
+              </div>
+            `);
+          }}
+        }}
+        if (Array.isArray(recovery.stretch_flags) && recovery.stretch_flags.length) {{
+          items.push(`
+            <div class="recommendation-item">
+              <span class="recommendation-label">Stretch Flags</span>
+              ${{escape_html(recovery.stretch_flags.join(', '))}}
+            </div>
+          `);
+        }}
+
+        recovery_quarter_badge.textContent = recovery.recovery_quarter ? `Recovery Quarter: Q${{recovery.recovery_quarter}}` : 'Recovery Quarter: N/A';
+        recommendations_body.innerHTML = items.length ? items.join('') : '<div class="recommendation-empty">No recovery recommendations generated for this version.</div>';
+      }} catch (error) {{
+        recovery_quarter_badge.textContent = 'Recovery Quarter: N/A';
+        recommendations_body.innerHTML = `<div class="recommendation-empty">Recovery recommendations unavailable: ${{escape_html(error.message)}}</div>`;
+      }}
+      post_parent_height();
     }}
 
     /* ── File Loading ── */
@@ -1138,6 +1273,7 @@ def build_index_html(data_dir: str) -> str:
     async function load_files() {{
       try {{
         set_status('Loading file list...');
+        await load_recommendations();
         const payload = await fetch_json('/api/files');
         state.files = payload.files ?? [];
         if (!state.files.length) {{
@@ -1157,6 +1293,9 @@ def build_index_html(data_dir: str) -> str:
         set_status(`Failed to load files: ${{err.message}}`);
       }}
     }}
+
+    window.addEventListener('load', post_parent_height);
+    window.addEventListener('resize', post_parent_height);
 
     load_files();
   </script>

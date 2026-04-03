@@ -636,7 +636,7 @@ textarea:valid:not(:placeholder-shown) {
   border-radius: 14px;
   border: 1px solid #e5e7eb;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .section-header {
@@ -688,6 +688,19 @@ textarea:valid:not(:placeholder-shown) {
   gap: 8px;
 }
 
+.subsection-header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.subsection-header-row h4 {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
 .seasonality-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -718,6 +731,12 @@ textarea:valid:not(:placeholder-shown) {
   font-weight: 500;
   color: #374151;
   margin: 0;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .field-description {
@@ -838,62 +857,47 @@ textarea:disabled {
   background-color: #4338ca;
 }
 
-/* ── Tooltips ── */
-.tooltip {
-  position: relative;
+.tooltip-trigger {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: 8px;
+  cursor: help;
 }
 
 .tooltip-icon {
   width: 18px;
   height: 18px;
   color: #9ca3af;
-  cursor: help;
   transition: color 0.15s ease;
 }
 
-.tooltip:hover .tooltip-icon {
+.tooltip-trigger:hover .tooltip-icon,
+.tooltip-trigger:focus-visible .tooltip-icon {
   color: #4f46e5;
 }
 
-.tooltip-content {
+.floating-tooltip {
   position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: 280px;
+  width: min(340px, calc(100vw - 20px));
   padding: 16px;
   background: #1f2937;
   color: #f9fafb;
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.5;
-  opacity: 0;
-  visibility: hidden;
-  transition: all 0.2s ease;
-  z-index: 100;
+  z-index: 2000;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
 }
 
-.tooltip-content::before {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-top-color: #1f2937;
+.floating-tooltip.hidden {
+  display: none;
 }
 
-.tooltip:hover .tooltip-content {
-  opacity: 1;
-  visibility: visible;
-}
-
-.tooltip-content strong {
+.floating-tooltip strong {
   display: block;
   font-size: 15px;
   font-weight: 600;
@@ -901,8 +905,143 @@ textarea:disabled {
   color: #fff;
 }
 
-.tooltip-content p {
+.floating-tooltip p {
   margin: 4px 0;
+}
+
+.percent-input-wrap {
+  position: relative;
+}
+
+.percent-symbol {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.percent-input-wrap input {
+  padding-right: 28px;
+}
+
+.seasonality-sum-badge {
+  margin-left: auto;
+  font-size: 13px;
+  color: #4b5563;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+
+.seasonality-sum-badge.seasonality-over-limit {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.seasonality-sum-badge.seasonality-valid {
+  color: #065f46;
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+}
+
+.planning-mode-controls {
+  padding: 0 32px 24px;
+}
+
+.planning-control-block {
+  border: 1px solid #e5e7eb;
+  background: #fafafa;
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 4px;
+}
+
+.planning-control-block.hidden {
+  display: none;
+}
+
+.planning-control-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.planning-mode-grid {
+  padding: 0;
+}
+
+.locked-months-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(90px, 1fr));
+  gap: 10px;
+}
+
+.month-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.tranche-scroll-wrap {
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.tranche-scroll {
+  display: inline-flex;
+  gap: 12px;
+  min-width: 100%;
+}
+
+.hiring-tranche {
+  width: 240px;
+  min-width: 240px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hiring-tranche-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hiring-tranche-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.remove-tranche-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #6b7280;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.remove-tranche-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tranche-actions {
+  margin-top: 10px;
 }
 
 /* ── Scenarios Grid ── */
@@ -945,6 +1084,41 @@ textarea:disabled {
   color: #6b7280;
   margin: 0;
   line-height: 1.5;
+}
+
+.scenario-perturbations {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.scenario-perturbation-field {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.scenario-map-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.scenario-map-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 36px;
+  gap: 8px;
+}
+
+.scenario-map-remove {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 16px;
+  color: #6b7280;
+  cursor: pointer;
 }
 
 /* ── Form Actions ── */
@@ -1365,7 +1539,9 @@ textarea:valid:not(:placeholder-shown) {
 /* ── Iframe Container ── */
 .iframe-container {
   width: 100%;
-  height: 800px;
+  min-height: 780px;
+  height: calc(100vh - 250px);
+  max-height: 1500px;
   position: relative;
   animation: fade-in 0.3s ease-out;
 }
@@ -1419,7 +1595,8 @@ textarea:valid:not(:placeholder-shown) {
   }
 
   .iframe-container {
-    height: 600px;
+    min-height: 620px;
+    height: calc(100vh - 260px);
   }
 }
 
@@ -1469,7 +1646,8 @@ textarea:valid:not(:placeholder-shown) {
   }
 
   .iframe-container {
-    height: 500px;
+    min-height: 520px;
+    height: calc(100vh - 240px);
   }
 
   .empty-icon,
@@ -1499,7 +1677,8 @@ textarea:valid:not(:placeholder-shown) {
   }
 
   .iframe-container {
-    height: 400px;
+    min-height: 420px;
+    height: calc(100vh - 210px);
   }
 
   .empty-state,
