@@ -46,7 +46,7 @@ ENV/
 
 Large generated versions (keep recent ones for demo)
 versions/v[0-9][0-9][0-9]/
-!versions/v0[0-9][0-3]/  # Keep first few versions for demo
+!versions/v0[2-3][0-9]/  # Keep v020-v039 for demo
 !versions/.gitkeep
 
 User data (keep sample files)
