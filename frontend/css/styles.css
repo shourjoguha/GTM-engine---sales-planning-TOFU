@@ -755,6 +755,28 @@ textarea:valid:not(:placeholder-shown) {
   position: relative;
 }
 
+.runtime-estimate-badge {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+}
+
+.runtime-estimate-badge-fast {
+  color: #065f46;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.runtime-estimate-badge-precise {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
 /* ── Form Inputs ── */
 input[type="text"],
 input[type="number"],

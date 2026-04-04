@@ -10,10 +10,11 @@ from urllib.parse import parse_qs, urlparse
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-# Example folder path structure: /Users/shourjosmac/Documents/Claude/Projects/Interview prep/GTM_Planning_Engine/versions/v010/
-DEFAULT_DATA_DIR = PROJECT_ROOT / "versions" / "v013"
+# Example folder path structure: /Users/shourjosmac/Documents/Claude/Projects/Interview prep/GTM_Planning_Engine/versions/v031/
+DEFAULT_DATA_DIR = PROJECT_ROOT / "versions" / "v031"
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8765
+DEFAULT_PORT = 5000
+#8765
 
 
 def parse_args() -> argparse.Namespace:

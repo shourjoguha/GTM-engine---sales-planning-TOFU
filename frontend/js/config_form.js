@@ -68,9 +68,9 @@
     },
     optimizer_mode: {
       title: "Optimizer Mode",
-      description: "Algorithm used for allocation optimization.",
-      impact: "Solver is more precise, greedy is faster.",
-      example: "Use 'solver' with cash cycle enabled."
+      description: "Choose fast iteration or precise optimization for allocation.",
+      impact: "Greedy is faster (~seconds). Solver is more precise (~minutes on this dataset).",
+      example: "Use Greedy while iterating, then switch to Solver for final run."
     },
     use_calibration: {
       title: "Use Calibration",
@@ -218,9 +218,9 @@
     },
     solver_method: {
       title: "Solver Method",
-      description: "Optimization algorithm for scipy mode.",
-      impact: "Different methods have different tradeoffs.",
-      example: "SLSQP is commonly used."
+      description: "UI naming for optimization style: Greedy (fast) vs Optimizer (precise).",
+      impact: "Greedy is typically seconds, Optimizer can take minutes on this dataset.",
+      example: "Use Greedy for quick edits, Optimizer for final precision."
     },
     solver_max_iterations: {
       title: "Max Iterations",
@@ -583,10 +583,12 @@
           <div class="form-field">
             ${generate_field_label('Optimizer Mode', 'optimizer_mode')}
             <div class="field-input">
-              <select name="optimizer_mode" required>
+              <select name="optimizer_mode" id="optimizerModeSelect" required>
                 <option value="greedy" ${allocation.optimizer_mode === 'greedy' ? 'selected' : ''}>Greedy (Fast)</option>
                 <option value="solver" ${allocation.optimizer_mode === 'solver' ? 'selected' : ''}>Solver (Precise)</option>
               </select>
+              <span class="runtime-estimate-badge" id="optimizerRuntimeBadge"></span>
+              <p class="text-muted mt-1" id="optimizerModeHint"></p>
             </div>
           </div>
 
@@ -931,8 +933,8 @@
             ${generate_field_label('Solver Method', 'solver_method')}
             <div class="field-input">
               <select name="solver_method">
-                <option value="SLSQP" ${system.solver?.method === 'SLSQP' ? 'selected' : ''}>SLSQP</option>
-                <option value="trust-constr" ${system.solver?.method === 'trust-constr' ? 'selected' : ''}>Trust Constrained</option>
+                <option value="SLSQP" ${system.solver?.method === 'SLSQP' ? 'selected' : ''}>Greedy</option>
+                <option value="trust-constr" ${system.solver?.method === 'trust-constr' ? 'selected' : ''}>Optimizer</option>
               </select>
             </div>
           </div>
@@ -1059,14 +1061,8 @@
             <label class="field-label">${format_label(perturbation_key)}</label>
             ${key_field}
             <input type="hidden" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_count" value="${entries.length}">
-            <div class="scenario-map-editor" data-scenario-index="${scenario_index}" data-perturbation-index="${perturbation_index}">
-              ${entries.map(([map_key, map_value], entry_index) => `
-                <div class="scenario-map-row">
-                  <input type="text" class="scenario-map-key" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_key_${entry_index}" value="${map_key}">
-                  <input type="number" step="0.01" class="scenario-map-value" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_value_${entry_index}" value="${map_value}">
-                  <button type="button" class="scenario-map-remove">×</button>
-                </div>
-              `).join('')}
+            <div class="scenario-map-editor" data-scenario-index="${scenario_index}" data-perturbation-index="${perturbation_index}" data-perturbation-key="${perturbation_key}">
+              ${entries.map(([map_key, map_value], entry_index) => generate_scenario_map_row(scenario_index, perturbation_index, entry_index, map_key, map_value, perturbation_key)).join('')}
             </div>
             <button type="button" class="btn btn-secondary add-scenario-map-entry" data-scenario-index="${scenario_index}" data-perturbation-index="${perturbation_index}">+ Add ${format_label(perturbation_key)} entry</button>
           </div>
@@ -1113,6 +1109,12 @@
       planning_mode_select.setAttribute('data-planning-listener', 'true');
     }
 
+    const optimizer_mode_select = document.getElementById('optimizerModeSelect');
+    if (optimizer_mode_select && !optimizer_mode_select.hasAttribute('data-optimizer-listener')) {
+      optimizer_mode_select.addEventListener('change', update_optimizer_mode_hint);
+      optimizer_mode_select.setAttribute('data-optimizer-listener', 'true');
+    }
+
     form.addEventListener('input', event => {
       if (event.target?.classList?.contains('seasonality-input')) {
         update_seasonality_sum();
@@ -1149,6 +1151,7 @@
     });
 
     setup_tooltip_system();
+    update_optimizer_mode_hint();
   }
 
   function setup_tooltip_system() {
@@ -1262,6 +1265,79 @@
     manual_controls.classList.toggle('hidden', mode !== 'manual_lock');
   }
 
+  function update_optimizer_mode_hint() {
+    const optimizer_select = document.getElementById('optimizerModeSelect');
+    const hint = document.getElementById('optimizerModeHint');
+    const badge = document.getElementById('optimizerRuntimeBadge');
+    if (!optimizer_select || !hint || !badge) {
+      return;
+    }
+
+    if (optimizer_select.value === 'solver') {
+      hint.textContent = 'Precise mode: better optimization quality, but can be much slower on larger runs.';
+      badge.textContent = 'Estimated runtime: ~2-5 minutes';
+      badge.classList.add('runtime-estimate-badge-precise');
+      badge.classList.remove('runtime-estimate-badge-fast');
+      return;
+    }
+    hint.textContent = 'Fast mode: quicker turnaround for iteration, usually best for day-to-day planning.';
+    badge.textContent = 'Estimated runtime: ~5-30 seconds';
+    badge.classList.add('runtime-estimate-badge-fast');
+    badge.classList.remove('runtime-estimate-badge-precise');
+  }
+
+  function get_scenario_key_options(perturbation_key) {
+    const dimensions = FORM_STATE.config_schema?.dimensions || {};
+    const products = Array.isArray(dimensions.product?.values) ? dimensions.product.values : [];
+    const channels = Array.isArray(dimensions.channel?.values) ? dimensions.channel.values : [];
+    const months = Array.from({ length: 12 }, (_, index) => `month_${index + 1}`);
+
+    if (perturbation_key === 'ae_headcount_change') {
+      return months;
+    }
+    if (perturbation_key.includes('channel') || perturbation_key.includes('lead_volume')) {
+      return channels;
+    }
+    if (perturbation_key.includes('asp_multiplier') || perturbation_key.includes('win_rate_multiplier')) {
+      return products;
+    }
+    return [...new Set([...products, ...channels, ...months])];
+  }
+
+  function generate_scenario_map_row(scenario_index, perturbation_index, entry_index, map_key, map_value, perturbation_key) {
+    const options = get_scenario_key_options(perturbation_key);
+    const selected_key = map_key || options[0] || '';
+    const option_html = options.map(option => `<option value="${option}" ${option === selected_key ? 'selected' : ''}>${option}</option>`).join('');
+    const key_field_html = options.length
+      ? `<select class="scenario-map-key" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_key_${entry_index}">${option_html}</select>`
+      : `<input type="text" class="scenario-map-key" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_key_${entry_index}" value="${selected_key}">`;
+
+    return `
+      <div class="scenario-map-row">
+        ${key_field_html}
+        <input type="number" step="0.01" class="scenario-map-value" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_value_${entry_index}" value="${map_value}">
+        <button type="button" class="scenario-map-remove">×</button>
+      </div>
+    `;
+  }
+
+  function reindex_scenario_map_rows(editor) {
+    if (!editor) return;
+    const scenario_index = editor.getAttribute('data-scenario-index');
+    const perturbation_index = editor.getAttribute('data-perturbation-index');
+    const rows = editor.querySelectorAll('.scenario-map-row');
+    rows.forEach((row, index) => {
+      const key_input = row.querySelector('.scenario-map-key');
+      const value_input = row.querySelector('.scenario-map-value');
+      if (key_input) {
+        key_input.name = `scenario_${scenario_index}_perturbation_${perturbation_index}_map_key_${index}`;
+      }
+      if (value_input) {
+        value_input.name = `scenario_${scenario_index}_perturbation_${perturbation_index}_map_value_${index}`;
+      }
+    });
+  }
+
   function update_seasonality_sum() {
     const inputs = document.querySelectorAll('.seasonality-input');
     const sum_badge = document.getElementById('seasonalitySumBadge');
@@ -1320,19 +1396,16 @@
     const perturbation_index = button.getAttribute('data-perturbation-index');
     const editor = document.querySelector(`.scenario-map-editor[data-scenario-index="${scenario_index}"][data-perturbation-index="${perturbation_index}"]`);
     if (!editor) return;
+    const perturbation_key = editor.getAttribute('data-perturbation-key') || '';
     const next_index = editor.querySelectorAll('.scenario-map-row').length;
-    editor.insertAdjacentHTML('beforeend', `
-      <div class="scenario-map-row">
-        <input type="text" class="scenario-map-key" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_key_${next_index}" value="">
-        <input type="number" step="0.01" class="scenario-map-value" name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_value_${next_index}" value="1">
-        <button type="button" class="scenario-map-remove">×</button>
-      </div>
-    `);
+    editor.insertAdjacentHTML('beforeend', generate_scenario_map_row(scenario_index, perturbation_index, next_index, '', 1, perturbation_key));
+    reindex_scenario_map_rows(editor);
     sync_scenario_map_count(editor);
   }
 
   function sync_scenario_map_count(editor) {
     if (!editor) return;
+    reindex_scenario_map_rows(editor);
     const scenario_index = editor.getAttribute('data-scenario-index');
     const perturbation_index = editor.getAttribute('data-perturbation-index');
     const count_input = document.querySelector(`[name="scenario_${scenario_index}_perturbation_${perturbation_index}_map_count"]`);

@@ -330,7 +330,7 @@
       if (typeof callback === 'function') {
         callback();
       }
-    }, 500);
+    }, 150);
   }
 
   /**

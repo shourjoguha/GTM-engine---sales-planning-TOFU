@@ -422,6 +422,10 @@ def run_full_mode(args: argparse.Namespace, config: ConfigManager, project_root:
     waterfall = build_monthly_waterfall(targets, capacity, results)
     waterfall.to_csv(version_dir / "monthly_waterfall.csv", index=False)
 
+    lever_engine = LeverAnalysisEngine(config.to_dict())
+    lever_report = lever_engine.analyze(results, capacity, targets, baselines)
+    _save_lever_analysis_outputs(version_dir, lever_engine, lever_report)
+
     cash_cycle_cfg = config.get("economics.cash_cycle", {})
     cash_cycle_enabled = (
         isinstance(cash_cycle_cfg, dict) and cash_cycle_cfg.get("enabled", False)
@@ -782,27 +786,7 @@ def run_recommend_mode(args: argparse.Namespace, config: ConfigManager, project_
         planning_mode=config.get("targets.planning_mode", "full_year"),
     )
     version_dir = Path(config.get("system.output_dir", "versions")) / f"v{version_id:03d}"
-
-    # Save lever results as CSV
-    lever_df = lever_engine.to_dataframe(report)
-    lever_df.to_csv(version_dir / "lever_analysis.csv", index=False)
-
-    # Save narrative
-    with open(version_dir / "lever_recommendations.txt", "w") as f:
-        f.write(report["recommendations_text"])
-
-    # Save full report as JSON
-    annual_target = report["annual_target"]
-    gap = report["gap"]
-    report_json = {
-        "gap": gap,
-        "gap_pct": round(gap / annual_target * 100, 2) if annual_target else 0,
-        "annual_target": annual_target,
-        "actual_bookings": report["actual_bookings"],
-        "sao_shadow_price": report["sao_shadow_price"],
-    }
-    with open(version_dir / "lever_analysis_report.json", "w") as f:
-        json.dump(report_json, f, indent=2, default=json_safe)
+    _save_lever_analysis_outputs(version_dir, lever_engine, report)
 
     print(f"\nLever analysis saved to {version_dir}/")
     print(f"  lever_analysis.csv            Ranked lever impact table")
@@ -836,6 +820,9 @@ def _print_final_summary(
     print(f"    validation_report.json   Validation check results")
     print(f"    recovery_analysis.json   Recovery & stretch analysis")
     print(f"    monthly_waterfall.csv    Consolidated month-by-month view")
+    print(f"    lever_analysis.csv       Ranked lever impact table")
+    print(f"    lever_recommendations.txt Plain-language narrative")
+    print(f"    lever_analysis_report.json Summary metrics")
     if cash_cycle_enabled:
         print(f"    cashcycle_waterfall.csv   Cash cycle booking realization waterfall")
 
@@ -856,6 +843,34 @@ def _print_final_summary(
     print("\n" + "=" * 70)
     print("PIPELINE COMPLETE")
     print("=" * 70)
+
+
+def _build_lever_analysis_report_json(report: dict) -> dict:
+    annual_target = report["annual_target"]
+    gap = report["gap"]
+    return {
+        "gap": gap,
+        "gap_pct": round(gap / annual_target * 100, 2) if annual_target else 0,
+        "annual_target": annual_target,
+        "actual_bookings": report["actual_bookings"],
+        "sao_shadow_price": report["sao_shadow_price"],
+    }
+
+
+def _save_lever_analysis_outputs(
+    version_dir: Path,
+    lever_engine: LeverAnalysisEngine,
+    report: dict,
+) -> None:
+    lever_df = lever_engine.to_dataframe(report)
+    lever_df.to_csv(version_dir / "lever_analysis.csv", index=False)
+
+    with open(version_dir / "lever_recommendations.txt", "w") as f:
+        f.write(report["recommendations_text"])
+
+    report_json = _build_lever_analysis_report_json(report)
+    with open(version_dir / "lever_analysis_report.json", "w") as f:
+        json.dump(report_json, f, indent=2, default=json_safe)
 
 
 # ── Main entry point ───────────────────────────────────────────────

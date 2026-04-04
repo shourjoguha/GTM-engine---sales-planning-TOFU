@@ -14,6 +14,7 @@
     is_fullscreen: false,
     latest_version_id: null,
     iframe_origin: null,
+    loading_version: null,
     cache: {
       versions: null,
       versions_timestamp: 0
@@ -212,11 +213,12 @@
 
       // Select new version after versions are loaded
       if (version_id && DOM.version_selector) {
-        // Wait a brief moment to ensure selector is updated
-        setTimeout(() => {
-          DOM.version_selector.value = version_id;
+        DOM.version_selector.value = version_id;
+        const charts_tab = document.getElementById('charts-tab');
+        const is_charts_active = !!charts_tab?.classList.contains('active');
+        if (is_charts_active) {
           load_charts_for_version(version_id);
-        }, 100);
+        }
       }
     });
   }
@@ -353,6 +355,13 @@
       show_empty_state();
       return;
     }
+    if (CHART_VIEWER_STATE.loading_version === version_id) {
+      return;
+    }
+    if (CHART_VIEWER_STATE.current_version === version_id && CHART_VIEWER_STATE.chart_server_url && DOM.iframe?.src === CHART_VIEWER_STATE.chart_server_url) {
+      hide_loading();
+      return;
+    }
 
     if (window.APIClient?.debug_log) {
       window.APIClient.debug_log('Charts Viewer', 'Loading charts for version', version_id);
@@ -360,6 +369,7 @@
 
     // Show loading indicator
     show_loading();
+    CHART_VIEWER_STATE.loading_version = version_id;
 
     try {
       // Check if chart server is already running
@@ -408,6 +418,8 @@
     } catch (error) {
       console.error('Charts Viewer - Failed to load charts:', error);
       show_error(error.message);
+    } finally {
+      CHART_VIEWER_STATE.loading_version = null;
     }
   }
 
@@ -513,7 +525,7 @@
   function handle_tab_change(event) {
     const tab_name = event.detail.tab;
 
-    if (tab_name === 'charts' && CHART_VIEWER_STATE.current_version) {
+    if (tab_name === 'charts' && CHART_VIEWER_STATE.current_version && !CHART_VIEWER_STATE.chart_server_url) {
       // Auto-load charts when switching to charts tab
       if (window.APIClient?.debug_log) {
         window.APIClient.debug_log('Charts Viewer', 'Switched to charts tab, loading charts');
