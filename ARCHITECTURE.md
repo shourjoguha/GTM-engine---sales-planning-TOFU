@@ -472,7 +472,7 @@ See [Mathematical Reverse-Engineering](file:///Users/shourjosmac/Documents/Claud
 - **Analytical sensitivity** `∂bookings/∂lever`: computed from closed-form expressions, not finite differences. O(1), completes in <2 seconds regardless of plan size.
 - Lever bounds and step sizes are configured in `config['business_recommendations']['levers']`.
 
-**Invoked by**: `run_plan.py --mode recommend`
+**Invoked by**: `run_plan.py --mode recommend` and also during full mode runs (automatic gap attribution for plans missing target)
 
 ---
 
@@ -506,11 +506,17 @@ raw_data.csv ──► Data Loader ──► df_clean
                             │
                     ┌───────┼────────┐
                     ▼       ▼        ▼
-               Recovery  Validation  Version Store
+               Recovery  Validation  Lever Analysis Engine
                     │       │             │
                     ▼       ▼             ▼
-               recovery  pass/fail    v001/
-               _plan     report
+               recovery  pass/fail    lever analysis outputs
+               _plan     report       (CSV, TXT, JSON)
+                    │
+                    ▼
+              Version Store
+                    │
+                    ▼
+                    v001/
                     │
                     ▼
               What-If Engine

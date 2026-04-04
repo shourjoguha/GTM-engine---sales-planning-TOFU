@@ -744,6 +744,12 @@ Updated on tab switch
    - Highlight data points
    - Custom chart configurations
 
+7. **Lever Analysis Display**
+   - Visualize gap decomposition waterfall (capacity shortfall / ASP decay / win-rate decay / cash cycle deferral)
+   - Display ranked lever recommendations with estimated impact
+   - Show lever sensitivity table with business context
+   - Note: Lever analysis outputs (lever_analysis.csv, lever_recommendations.txt, lever_analysis_report.json) are generated automatically during full mode runs and via `--mode recommend`
+
 ### Low Priority
 
 7. **Custom Date Ranges**
