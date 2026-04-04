@@ -18,7 +18,7 @@ import time
 from http.server import ThreadingHTTPServer
 
 app = Flask(__name__)
-CORS(app, origins=["https://*.lovable.app"])
+CORS(app, resources={r"/api/*": {"origins": ["https://*.lovable.app"]}})
 
 PROJECT_ROOT = Path(__file__).parent
 DATA_DIR = PROJECT_ROOT / "data" / "raw"
