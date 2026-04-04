@@ -13,7 +13,6 @@ This application has been packaged for Railway deployment with a Flask web inter
 - `app.py` - Flask web application with REST API
 - `Procfile` - Railway deployment configuration
 - `runtime.txt` - Python version specification
-- `Dockerfile` - Container configuration (optional)
 - `.gitignore` - Properly configured to keep essential data
 - `RAILWAY_DEPLOYMENT.md` - This deployment guide
 
@@ -41,7 +40,7 @@ Railway's filesystem is ephemeral. For production:
 
 ## Deployment Options
 
-### Option 1: Railway Auto-Detection (Recommended - No Docker)
+### Railway Auto-Detection (Recommended)
 
 **Steps:**
 1. Push code to GitHub
@@ -52,20 +51,6 @@ Railway's filesystem is ephemeral. For production:
 **Configuration:**
 - Set environment variable `PORT=8000` (Railway sets this automatically)
 - Set `HOST=0.0.0.0` (default in app.py)
-
-### Option 2: Docker Deployment
-
-**Steps:**
-1. Create Docker context for Railway:
-   ```bash
-   railway login
-   railway init
-   ```
-
-2. Set Dockerfile in Railway dashboard:
-   - Go to your service settings
-   - Select "Dockerfile" as build method
-   - Railway will use the provided Dockerfile
 
 ## Environment Variables
 
