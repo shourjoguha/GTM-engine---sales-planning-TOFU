@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, send_from_directory, render_template_string
+from flask_cors import CORS
 from pathlib import Path
 import os
 import json
@@ -17,6 +18,7 @@ import time
 from http.server import ThreadingHTTPServer
 
 app = Flask(__name__)
+CORS(app, origins=["https://*.lovable.app"])
 
 PROJECT_ROOT = Path(__file__).parent
 DATA_DIR = PROJECT_ROOT / "data" / "raw"
