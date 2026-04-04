@@ -1,0 +1,71 @@
+{
+  "version_id": 24,
+  "timestamp": "2026-04-03T17:32:27.521082",
+  "description": "debug submit-charts repro",
+  "planning_mode": "full_year",
+  "config_hash": "e8328911b357bea33f2500c9c306bc60cd6dd9471b5319409fc7d37fbeab038f",
+  "total_annual_bookings": 177357260.60569188,
+  "total_annual_pipeline": 576747574.9446377,
+  "total_annual_saos": 57771.00843190645,
+  "total_annual_deals": 19573.0,
+  "average_weighted_roi": 3070.0045822246534,
+  "months_capacity_constrained": 3,
+  "total_months": 12,
+  "segment_summary": {
+    "share": {
+      "CM.Marketing": 0.03,
+      "CM.Outbound": 0.03,
+      "CM.Partner": 0.03,
+      "EOR.Marketing": 0.37,
+      "EOR.Outbound": 0.06,
+      "EOR.Partner": 0.3,
+      "Payroll.Marketing": 0.08,
+      "Payroll.Outbound": 0.03,
+      "Payroll.Partner": 0.07
+    },
+    "projected_bookings": {
+      "CM.Marketing": 3032977.94,
+      "CM.Outbound": 1819786.77,
+      "CM.Partner": 2773008.4,
+      "EOR.Marketing": 82308622.28,
+      "EOR.Outbound": 10111611.92,
+      "EOR.Partner": 54107582.03,
+      "Payroll.Marketing": 11154171.13,
+      "Payroll.Outbound": 2599695.38,
+      "Payroll.Partner": 9449804.75
+    },
+    "required_saos": {
+      "CM.Marketing": 1733.13,
+      "CM.Outbound": 1733.13,
+      "CM.Partner": 1733.13,
+      "EOR.Marketing": 20990.28,
+      "EOR.Outbound": 3267.0,
+      "EOR.Partner": 16978.64,
+      "Payroll.Marketing": 5290.18,
+      "Payroll.Outbound": 1733.13,
+      "Payroll.Partner": 4312.39
+    },
+    "weighted_roi": {
+      "CM.Marketing": 1750.0,
+      "CM.Outbound": 1050.0,
+      "CM.Partner": 1600.0,
+      "EOR.Marketing": 3921.27,
+      "EOR.Outbound": 3095.08,
+      "EOR.Partner": 3186.8,
+      "Payroll.Marketing": 2108.47,
+      "Payroll.Outbound": 1500.0,
+      "Payroll.Partner": 2191.31
+    }
+  },
+  "total_in_window_bookings": 159123199.00317827,
+  "total_deferred_bookings": 18234061.602513615,
+  "in_window_pct": 89.71902162886224,
+  "total_bookings": 177357260.60569188,
+  "total_pipeline": 576747574.9446377,
+  "total_saos": 57771.00843190645,
+  "total_deals": 19573.0,
+  "total_ae_hc": 154,
+  "productivity_per_ae": 375.1364183890029,
+  "monthly_volatility": 2584273.15789873,
+  "capacity_utilisation": 0.8923164768891938
+}
