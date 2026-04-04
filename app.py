@@ -310,6 +310,30 @@ def get_version_results(version_id):
     df = pd.read_csv(results_file)
     return jsonify(df.to_dict(orient='records'))
 
+# ← existing download route ends above this line
+
+@app.route('/api/version/<version_id>/files', methods=['GET'])
+def list_version_files(version_id):
+    version_id = normalize_version_id(version_id)
+    version_dir = VERSIONS_DIR / version_id
+    if not version_dir.exists():
+        return jsonify({"error": "Version not found"}), 404
+
+    files = [f.name for f in version_dir.iterdir() if f.is_file()]
+    return jsonify({"version_id": version_id, "files": sorted(files)})
+
+
+@app.route('/api/version/<version_id>/recommendations', methods=['GET'])
+def get_version_recommendations(version_id):
+    version_id = normalize_version_id(version_id)
+    recs_file = VERSIONS_DIR / version_id / 'lever_analysis.txt'
+    if not recs_file.exists():
+        recs_file = VERSIONS_DIR / version_id / 'recommendations.txt'
+    if not recs_file.exists():
+        return jsonify({"error": "No recommendations found"}), 404
+    return recs_file.read_text(), 200, {'Content-Type': 'text/plain'}
+
+
 @app.route('/api/version/<version_id>/download/<filename>')
 def download_version_file(version_id, filename):
     version_id = normalize_version_id(version_id)
