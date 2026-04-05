@@ -46,6 +46,25 @@ ENV/
 
 Large generated versions (keep recent ones for demo)
 versions/v[0-9][0-9][0-9]/
+!versions/v001/
+!versions/v002/
+!versions/v003/
+!versions/v004/
+!versions/v005/
+!versions/v006/
+!versions/v007/
+!versions/v008/
+!versions/v009/
+!versions/v010/
+!versions/v011/
+!versions/v012/
+!versions/v013/
+!versions/v014/
+!versions/v015/
+!versions/v016/
+!versions/v017/
+!versions/v018/
+!versions/v019/
 !versions/v020/
 !versions/v021/
 !versions/v022/
@@ -57,15 +76,6 @@ versions/v[0-9][0-9][0-9]/
 !versions/v028/
 !versions/v029/
 !versions/v030/
-!versions/v031/
-!versions/v032/
-!versions/v033/
-!versions/v034/
-!versions/v035/
-!versions/v036/
-!versions/v037/
-!versions/v038/
-!versions/v039/
 !versions/.gitkeep
 
 User data (keep sample files)
