@@ -13,7 +13,7 @@
     {
       "name": "Share Constraints",
       "passed": true,
-      "message": "OK: All shares within [5.0%, 40.0%] across 108 rows.",
+      "message": "OK: All shares within [3.0%, 40.0%] across 108 rows.",
       "details": {
         "violations": []
       }
@@ -45,11 +45,11 @@
     {
       "name": "Target Alignment",
       "passed": false,
-      "message": "FAIL: Total projected $115,710,171 vs target $188,000,000 (error: 38.5%).",
+      "message": "FAIL: Total projected $177,357,261 vs target $187,500,000 (error: 5.4%).",
       "details": {
-        "total_projected": 115710171.12596568,
-        "total_target": 188000000.0,
-        "rel_error_pct": 38.452036635124635
+        "total_projected": 177357260.60569188,
+        "total_target": 187500000.0,
+        "rel_error_pct": 5.409461010297664
       }
     },
     {
@@ -57,7 +57,20 @@
       "passed": true,
       "message": "Confidence level data not available; skipping check.",
       "details": {}
+    },
+    {
+      "name": "In-Window Target Alignment (Cash Cycle)",
+      "passed": false,
+      "message": "WARN: In-window bookings $159,123,199 below target $187,500,000 (shortfall: 15.1%). Deferred: $18,234,062 (10.3% of total).",
+      "details": {
+        "total_in_window_bookings": 159123199.00317827,
+        "total_deferred_bookings": 18234061.602513615,
+        "total_bookings": 177357260.60569188,
+        "total_target": 187500000.0,
+        "in_window_pct": 89.71902162886224,
+        "shortfall_pct": 15.13429386497159
+      }
     }
   ],
-  "summary": "VALIDATION FAILED: 6/7 checks passed. 1 issue(s) detected.\n\nFailed checks:\n  - Target Alignment: FAIL: Total projected $115,710,171 vs target $188,000,000 (error: 38.5%).\n"
+  "summary": "VALIDATION FAILED: 6/8 checks passed. 2 issue(s) detected.\n\nFailed checks:\n  - Target Alignment: FAIL: Total projected $177,357,261 vs target $187,500,000 (error: 5.4%).\n  - In-Window Target Alignment (Cash Cycle): WARN: In-window bookings $159,123,199 below target $187,500,000 (shortfall: 15.1%). Deferred: $18,234,062 (10.3% of total).\n"
 }

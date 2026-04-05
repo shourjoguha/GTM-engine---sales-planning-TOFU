@@ -369,11 +369,14 @@ def run_plan():
                 "allocation": {"optimizer_mode": optimizer}
             })
 
-        runtime_config.setdefault("targets", {})
-        runtime_config["targets"]["annual_target"] = annual_target
-        runtime_config.setdefault("allocation", {})
-        runtime_config["allocation"]["optimizer_mode"] = optimizer
-        normalize_cash_cycle_distribution_keys(runtime_config)
+        # Only override with request params if not explicitly set in config_updates
+        if not (config_updates and isinstance(config_updates.get('targets'), dict) and 'annual_target' in config_updates['targets']):
+            runtime_config.setdefault("targets", {})
+            runtime_config["targets"]["annual_target"] = annual_target
+        
+        if not (config_updates and isinstance(config_updates.get('allocation'), dict) and 'optimizer_mode' in config_updates['allocation']):    
+            runtime_config.setdefault("allocation", {})
+            runtime_config["allocation"]["optimizer_mode"] = optimizer
 
         temp_config = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
         temp_config.write(yaml.safe_dump(runtime_config, sort_keys=False))
