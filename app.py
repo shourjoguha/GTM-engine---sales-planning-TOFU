@@ -352,58 +352,32 @@ def run_plan():
     try:
         data = request.json or {}
 
-        # DEBUG: Log the incoming request
-        print(f"\n=== /api/run-plan REQUEST DEBUG ===")
-        print(f"Full request data: {json.dumps(data, indent=2)}")
-        print(f"config_updates present: {'config_updates' in data}")
-        if 'config_updates' in data:
-            print(f"config_updates type: {type(data.get('config_updates'))}")
-            print(f"config_updates content: {json.dumps(data.get('config_updates'), indent=2)}")
-        print(f"===================================\n")
-
+        # Extract metadata fields
         description = data.get('description', 'API Run')
-        annual_target = data.get('annual_target', 188000000)
         mode = data.get('mode', 'full')
-        optimizer = data.get('optimizer', 'greedy')
         auto_start_charts = data.get('auto_start_charts', True)
 
+        # Load base config from disk
         with open(CONFIG_FILE) as f:
             base_config = yaml.safe_load(f) or {}
 
-        config_updates = data.get('config_updates')
-        if isinstance(config_updates, dict) and config_updates:
-            runtime_config = deep_merge_dict(base_config, config_updates)
+        # The frontend sends the entire GTMConfig object as the request body.
+        # Extract it and use it as the runtime config, removing metadata fields
+        # that aren't part of the actual config.
+        runtime_config = dict(data)
+        runtime_config.pop('description', None)
+        runtime_config.pop('mode', None)
+        runtime_config.pop('auto_start_charts', None)
+
+        # If the request is empty or only has metadata, fall back to base config
+        if not runtime_config or all(k in ['description', 'mode', 'auto_start_charts'] for k in data.keys()):
+            runtime_config = base_config
         else:
-            runtime_config = deep_merge_dict(base_config, {
-                "targets": {"annual_target": annual_target},
-                "allocation": {"optimizer_mode": optimizer}
-            })
+            # Deep merge with base config to fill in any missing sections
+            runtime_config = deep_merge_dict(base_config, runtime_config)
 
-        # Only override with request params if not explicitly set in config_updates
-        if not (config_updates and isinstance(config_updates.get('targets'), dict) and 'annual_target' in config_updates['targets']):
-            runtime_config.setdefault("targets", {})
-            runtime_config["targets"]["annual_target"] = annual_target
-        
-        if not (config_updates and isinstance(config_updates.get('allocation'), dict) and 'optimizer_mode' in config_updates['allocation']):    
-            runtime_config.setdefault("allocation", {})
-            runtime_config["allocation"]["optimizer_mode"] = optimizer
-
-        # DEBUG: Log the merged config
-
-        print(f"\n=== CONFIG MERGE DEBUG ===")
-        print(f"Base config targets.annual_target: {base_config.get('targets', {}).get('annual_target')}")
-        print(f"Base config economics.default_decay.asp.rate: {base_config.get('economics', {}).get('default_decay', {}).get('asp', {}).get('rate')}")
-        print(f"Runtime config targets.annual_target: {runtime_config.get('targets', {}).get('annual_target')}")
-        print(f"Runtime config economics.default_decay.asp.rate: {runtime_config.get('economics', {}).get('default_decay', {}).get('asp', {}).get('rate')}")
-        print(f"===========================\n")
-
-        # DEBUG: Log final config before subprocess
-        print(f"\n=== FINAL CONFIG BEFORE SUBPROCESS ===")
-        print(f"Final targets.annual_target: {runtime_config.get('targets', {}).get('annual_target')}")
-        print(f"Final targets.seasonality_weights: {runtime_config.get('targets', {}).get('seasonality_weights')}")
-        print(f"Final economics.default_decay.asp.rate: {runtime_config.get('economics', {}).get('default_decay', {}).get('asp', {}).get('rate')}")
-        print(f"Final what_if_scenarios: {runtime_config.get('what_if_scenarios')}")
-        print(f"======================================\n")
+        # Normalize cash cycle keys (convert string keys to ints)
+        normalize_cash_cycle_distribution_keys(runtime_config)
 
         temp_config = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
         temp_config.write(yaml.safe_dump(runtime_config, sort_keys=False))
