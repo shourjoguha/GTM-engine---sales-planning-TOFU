@@ -27,6 +27,48 @@ DATA_DIR = PROJECT_ROOT / "data" / "raw"
 VERSIONS_DIR = PROJECT_ROOT / "versions"
 CONFIG_FILE = PROJECT_ROOT / "config.yaml"
 
+
+def cleanup_old_versions_fifo(max_usage_percent=80, min_versions_to_keep=3):
+    """
+    Delete oldest versions (FIFO) when disk usage exceeds threshold.
+
+    Args:
+        max_usage_percent: Delete old versions if usage > this % (default 80%)
+        min_versions_to_keep: Never delete if fewer than this many versions exist
+    """
+    if not VERSIONS_DIR.exists():
+        return
+
+    # Get all versions sorted by creation time (oldest first)
+    versions = sorted(VERSIONS_DIR.glob('v*'), key=lambda x: x.stat().st_ctime)
+
+    if len(versions) <= min_versions_to_keep:
+        return  # Don't delete if we're at minimum
+
+    # Calculate disk usage
+    total_size = sum(f.stat().st_size for v in versions for f in v.rglob('*') if f.is_file())
+    volume_size_mb = 512  # Match the volume size
+    volume_size_bytes = volume_size_mb * 1024 * 1024
+    usage_percent = (total_size / volume_size_bytes) * 100
+
+    print(f"[Cleanup] Disk usage: {usage_percent:.1f}% ({total_size / (1024*1024):.1f}MB / {volume_size_mb}MB)")
+
+    # Delete oldest versions until usage is below threshold
+    if usage_percent > max_usage_percent:
+        for old_version in versions:
+            if len(versions) <= min_versions_to_keep:
+                break
+
+            try:
+                shutil.rmtree(old_version)
+                versions.remove(old_version)
+                total_size = sum(f.stat().st_size for v in versions for f in v.rglob('*') if f.is_file())
+                usage_percent = (total_size / volume_size_bytes) * 100
+                print(f"[Cleanup] Deleted {old_version.name}. New usage: {usage_percent:.1f}%")
+            except Exception as e:
+                print(f"[Cleanup] Failed to delete {old_version.name}: {e}")
+
+
 # Chart server management
 CHART_SERVERS = {}
 CHART_SERVER_START_PORT = 8765
@@ -419,6 +461,9 @@ def run_plan():
                     version_id = versions[0].name
             
             if version_id:
+                # Clean up old versions (FIFO when disk usage > 80%)
+                cleanup_old_versions_fifo(max_usage_percent=80, min_versions_to_keep=3)
+
                 summary_file = VERSIONS_DIR / version_id / 'summary.json'
                 validation_file = VERSIONS_DIR / version_id / 'validation_report.json'
                 

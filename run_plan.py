@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Callable, Dict, Tuple, Any
@@ -43,6 +44,52 @@ from gtm_engine.adjustments import AdjustmentEngine
 from gtm_engine.what_if import WhatIfEngine
 from gtm_engine.comparator import VersionComparator
 from gtm_engine.lever_analysis import LeverAnalysisEngine
+
+
+# ── FIFO cleanup ───────────────────────────────────────────────────────
+
+VERSIONS_DIR = Path(__file__).parent / "versions"
+
+
+def cleanup_old_versions_fifo(max_usage_percent=80, min_versions_to_keep=3):
+    """
+    Delete oldest versions (FIFO) when disk usage exceeds threshold.
+
+    Args:
+        max_usage_percent: Delete old versions if usage > this % (default 80%)
+        min_versions_to_keep: Never delete if fewer than this many versions exist
+    """
+    if not VERSIONS_DIR.exists():
+        return
+
+    # Get all versions sorted by creation time (oldest first)
+    versions = sorted(VERSIONS_DIR.glob('v*'), key=lambda x: x.stat().st_ctime)
+
+    if len(versions) <= min_versions_to_keep:
+        return  # Don't delete if we're at minimum
+
+    # Calculate disk usage
+    total_size = sum(f.stat().st_size for v in versions for f in v.rglob('*') if f.is_file())
+    volume_size_mb = 512  # Match the volume size
+    volume_size_bytes = volume_size_mb * 1024 * 1024
+    usage_percent = (total_size / volume_size_bytes) * 100
+
+    print(f"[Cleanup] Disk usage: {usage_percent:.1f}% ({total_size / (1024*1024):.1f}MB / {volume_size_mb}MB)")
+
+    # Delete oldest versions until usage is below threshold
+    if usage_percent > max_usage_percent:
+        for old_version in versions:
+            if len(versions) <= min_versions_to_keep:
+                break
+
+            try:
+                shutil.rmtree(old_version)
+                versions.remove(old_version)
+                total_size = sum(f.stat().st_size for v in versions for f in v.rglob('*') if f.is_file())
+                usage_percent = (total_size / volume_size_bytes) * 100
+                print(f"[Cleanup] Deleted {old_version.name}. New usage: {usage_percent:.1f}%")
+            except Exception as e:
+                print(f"[Cleanup] Failed to delete {old_version.name}: {e}")
 
 
 # ── Utility functions ──────────────────────────────────────────────────
@@ -398,6 +445,9 @@ def run_full_mode(args: argparse.Namespace, config: ConfigManager, project_root:
         planning_mode=config.get("targets.planning_mode", "full_year"),
     )
 
+    # Clean up old versions (FIFO when disk usage > 80%)
+    cleanup_old_versions_fifo(max_usage_percent=80, min_versions_to_keep=3)
+
     version_dir = Path(config.get("system.output_dir", "versions")) / f"v{version_id:03d}"
 
     # ── Write intermediate files ────────────────────────────────────
@@ -528,6 +578,10 @@ def run_adjustment_mode(args: argparse.Namespace, config: ConfigManager, project
         description=args.description or f"Mid-cycle adjustment from v{args.base_version:03d}",
         planning_mode=adjusted_config.get("targets.planning_mode", "full_year"),
     )
+
+    # Clean up old versions (FIFO when disk usage > 80%)
+    cleanup_old_versions_fifo(max_usage_percent=80, min_versions_to_keep=3)
+
     version_dir = Path(config.get("system.output_dir", "versions")) / f"v{version_id:03d}"
 
     # Write adjustment-specific files
@@ -638,6 +692,10 @@ def run_whatif_mode(args: argparse.Namespace, config: ConfigManager, project_roo
         description=args.description or "What-if scenario analysis",
         planning_mode=config.get("targets.planning_mode", "full_year"),
     )
+
+    # Clean up old versions (FIFO when disk usage > 80%)
+    cleanup_old_versions_fifo(max_usage_percent=80, min_versions_to_keep=3)
+
     version_dir = Path(config.get("system.output_dir", "versions")) / f"v{version_id:03d}"
 
     clean_comparison = whatif_engine.to_dataframe(comparison_df)
@@ -785,6 +843,10 @@ def run_recommend_mode(args: argparse.Namespace, config: ConfigManager, project_
         description=args.description or "Lever analysis recommendations",
         planning_mode=config.get("targets.planning_mode", "full_year"),
     )
+
+    # Clean up old versions (FIFO when disk usage > 80%)
+    cleanup_old_versions_fifo(max_usage_percent=80, min_versions_to_keep=3)
+
     version_dir = Path(config.get("system.output_dir", "versions")) / f"v{version_id:03d}"
     _save_lever_analysis_outputs(version_dir, lever_engine, report)
 
