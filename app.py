@@ -351,6 +351,16 @@ def download_version_file(version_id, filename):
 def run_plan():
     try:
         data = request.json or {}
+
+        # DEBUG: Log the incoming request
+        print(f"\n=== /api/run-plan REQUEST DEBUG ===")
+        print(f"Full request data: {json.dumps(data, indent=2)}")
+        print(f"config_updates present: {'config_updates' in data}")
+        if 'config_updates' in data:
+            print(f"config_updates type: {type(data.get('config_updates'))}")
+            print(f"config_updates content: {json.dumps(data.get('config_updates'), indent=2)}")
+        print(f"===================================\n")
+
         description = data.get('description', 'API Run')
         annual_target = data.get('annual_target', 188000000)
         mode = data.get('mode', 'full')
@@ -378,9 +388,27 @@ def run_plan():
             runtime_config.setdefault("allocation", {})
             runtime_config["allocation"]["optimizer_mode"] = optimizer
 
+        # DEBUG: Log the merged config
+
+        print(f"\n=== CONFIG MERGE DEBUG ===")
+        print(f"Base config targets.annual_target: {base_config.get('targets', {}).get('annual_target')}")
+        print(f"Base config economics.default_decay.asp.rate: {base_config.get('economics', {}).get('default_decay', {}).get('asp', {}).get('rate')}")
+        print(f"Runtime config targets.annual_target: {runtime_config.get('targets', {}).get('annual_target')}")
+        print(f"Runtime config economics.default_decay.asp.rate: {runtime_config.get('economics', {}).get('default_decay', {}).get('asp', {}).get('rate')}")
+        print(f"===========================\n")
+
+        # DEBUG: Log final config before subprocess
+        print(f"\n=== FINAL CONFIG BEFORE SUBPROCESS ===")
+        print(f"Final targets.annual_target: {runtime_config.get('targets', {}).get('annual_target')}")
+        print(f"Final targets.seasonality_weights: {runtime_config.get('targets', {}).get('seasonality_weights')}")
+        print(f"Final economics.default_decay.asp.rate: {runtime_config.get('economics', {}).get('default_decay', {}).get('asp', {}).get('rate')}")
+        print(f"Final what_if_scenarios: {runtime_config.get('what_if_scenarios')}")
+        print(f"======================================\n")
+
         temp_config = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
         temp_config.write(yaml.safe_dump(runtime_config, sort_keys=False))
         temp_config.close()
+
         
         try:
             cmd = [sys.executable, 'run_plan.py', '--config', temp_config.name, '--description', description, '--mode', mode]
