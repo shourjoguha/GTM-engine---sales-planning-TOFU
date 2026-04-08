@@ -383,29 +383,52 @@ def _run_full_pipeline(runtime_config: dict, description: str) -> dict:
 
     This replaces the subprocess.run() call to run_plan.py with direct
     in-process execution using the monolith engine classes.
+
+    The config dict goes through a YAML round-trip to normalize types
+    (matching the old subprocess approach where config was written to a
+    temp YAML file and then re-read by run_plan.py).
     """
-    config = GTMConfig.from_dict(runtime_config)
+    import time as _time
+
+    # YAML round-trip: normalize JSON string keys → YAML native types
+    # (e.g., seasonality_weights: {"1": 0.07} → {1: 0.07})
+    # This matches the old subprocess approach exactly.
+    normalized_config = yaml.safe_load(yaml.safe_dump(runtime_config, sort_keys=False))
+    config = GTMConfig.from_dict(normalized_config)
     data_path = str(DATA_DIR / "2025_actuals.csv")
+    t0 = _time.monotonic()
+
+    def _elapsed():
+        return f"{_time.monotonic() - t0:.1f}s"
 
     # Stage 2: Data
+    print(f"[pipeline] Stage 2: Loading data...", flush=True)
     loader = DataLayer(config)
     df_raw = loader.load(data_path)
     df_clean = loader.prepare(df_raw)
     baselines = loader.compute_segment_baselines(df_clean)
+    print(f"[pipeline] Stage 2 done ({_elapsed()})", flush=True)
 
     # Stage 3: Targets
+    print(f"[pipeline] Stage 3: Generating targets...", flush=True)
     target_gen = TargetLayer(config)
     targets = target_gen.generate()
+    print(f"[pipeline] Stage 3 done ({_elapsed()})", flush=True)
 
     # Stage 4: Capacity
+    print(f"[pipeline] Stage 4: Calculating capacity...", flush=True)
     ae_model = CapacityLayer(config)
     capacity = ae_model.calculate()
+    print(f"[pipeline] Stage 4 done ({_elapsed()})", flush=True)
 
     # Stage 5: Economics
+    print(f"[pipeline] Stage 5: Economics engine...", flush=True)
     economics = EconomicsLayer(config)
     economics.load_baselines(baselines)
+    print(f"[pipeline] Stage 5 done ({_elapsed()})", flush=True)
 
     # Stage 6: Optimization
+    print(f"[pipeline] Stage 6: Running optimizer...", flush=True)
     optimizer = OptimizerLayer(config)
     results = optimizer.optimize(
         targets=targets,
@@ -415,18 +438,24 @@ def _run_full_pipeline(runtime_config: dict, description: str) -> dict:
     )
     opt_summary = optimizer.get_optimization_summary(results)
     enriched = build_enriched_summary(opt_summary, capacity, results)
+    print(f"[pipeline] Stage 6 done ({_elapsed()})", flush=True)
 
     # Stage 7: Validation
+    print(f"[pipeline] Stage 7: Validating...", flush=True)
     validator = ValidationLayer(config)
     validation = validator.validate(results, targets=targets, capacity=capacity)
     overall_pass = validation.get("passed", False) if isinstance(validation, dict) else False
+    print(f"[pipeline] Stage 7 done ({_elapsed()})", flush=True)
 
     # Stage 8: Recovery
+    print(f"[pipeline] Stage 8: Recovery analysis...", flush=True)
     recovery_engine = RecoveryLayer(config)
     targets_r, capacity_r = prepare_recovery_inputs(targets, capacity)
     recovery_analysis = recovery_engine.analyze(results, targets_r, capacity_r)
+    print(f"[pipeline] Stage 8 done ({_elapsed()})", flush=True)
 
     # Save version
+    print(f"[pipeline] Saving version...", flush=True)
     summary_dict = sanitize_summary(enriched)
     store = VersionStoreLayer(config)
     version_id = store.save(
@@ -486,6 +515,7 @@ def _run_full_pipeline(runtime_config: dict, description: str) -> dict:
         waterfall_cc = build_cashcycle_waterfall(results, economics, config)
         waterfall_cc.to_csv(version_dir / "cashcycle_waterfall.csv", index=False)
 
+    print(f"[pipeline] COMPLETE in {_elapsed()} — version v{version_id:03d}", flush=True)
     return {
         "version_id": f"v{version_id:03d}",
         "summary": summary_dict,
