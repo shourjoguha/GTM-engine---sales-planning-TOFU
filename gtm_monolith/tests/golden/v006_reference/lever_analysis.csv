@@ -1,0 +1,11 @@
+rank,lever,category,current_value,recommended_value,unit,estimated_gain_$,pct_of_gap_closed,pct_of_base_bookings,recommendation
+1,Raise ASP floor,economics,0.75,0.95,multiplier,42432853.0,398.7,23.93,Raise ASP floor: 0.75 → 0.95 multiplier  →  +$42.4M bookings  (+23.9% of base bookings)
+2,Raise win-rate floor,economics,0.8,0.95,multiplier,29835600.0,280.3,16.82,Raise win-rate floor: 0.80 → 0.95 multiplier  →  +$29.8M bookings  (+16.8% of base bookings)
+3,Slow win-rate decay,economics,0.005,0.001,rate,1221491.0,11.5,0.69,Slow win-rate decay: 0.0050 → 0.0010 rate  →  +$1.2M bookings  (+0.7% of base bookings)
+4,Slow ASP decay rate,economics,0.001,0.0003,rate,518349.0,4.9,0.29,Slow ASP decay rate: 0.0010 → 0.0003 rate  →  +$0.5M bookings  (+0.3% of base bookings)
+5,Add tenured AEs,ae_capacity,100.0,120.0,AEs,0.0,0.0,0.0,Add tenured AEs: 100 → 120 AEs  →  +$0.0M bookings  (+0.0% of base bookings)
+6,Reduce ramp time,ae_capacity,45.0,21.0,days,0.0,0.0,0.0,Reduce ramp time: 45 → 21 days  →  +$0.0M bookings  (+0.0% of base bookings)
+7,Reduce backfill delay,ae_capacity,1.0,0.0,months,0.0,0.0,0.0,Reduce backfill delay: 1 → 0 months  →  +$0.0M bookings  (+0.0% of base bookings)
+8,Reduce mentoring overhead,ae_capacity,0.05,0.02,%,0.0,0.0,0.0,Reduce mentoring overhead: 5% → 2% %  →  +$0.0M bookings  (+0.0% of base bookings)
+9,Reduce PTO shrinkage,ae_capacity,0.08,0.05,%,0.0,0.0,0.0,Reduce PTO shrinkage: 8% → 5% %  →  +$0.0M bookings  (+0.0% of base bookings)
+10,Reduce admin overhead,ae_capacity,0.05,0.02,%,0.0,0.0,0.0,Reduce admin overhead: 5% → 2% %  →  +$0.0M bookings  (+0.0% of base bookings)

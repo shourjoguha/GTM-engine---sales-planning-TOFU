@@ -1,0 +1,89 @@
+======================================================================
+LEVER ANALYSIS — GAP ATTRIBUTION & RECOMMENDATIONS
+======================================================================
+
+  Plan misses target by $10.6M  (5.7% of $188M target)
+  Projected bookings: $177.4M   Target: $188M
+
+GAP DECOMPOSITION — where the gap comes from
+----------------------------------------------------------------------
+  Baseline (zero decay, no capacity constraint)  $276.9M
+  − Capacity shortfall (demand > supply)         −$0.0M
+  − ASP decay at volume                          −$44.1M
+  − Win-rate decay at volume                     −$35.6M
+  − Cash cycle deferral (outside horizon)        −$18.2M
+  = Projected bookings                            $177.4M
+  − Annual target                                −$188M
+  = Gap                                          −$10.6M
+
+  Primary driver of gap: ASP decay ($44.1M)
+
+RECOMMENDED LEVERS (ranked by estimated bookings impact)
+----------------------------------------------------------------------
+  1. Raise ASP floor: 0.75 → 0.95 multiplier  →  +$42.4M bookings  (+23.9% of base bookings)
+     Impact:  +23.9% of base bookings  |  closes 399% of gap  |  cumulative: +$42.4M
+     What this means:
+     The ASP floor is the hard minimum deal size as a percentage of
+     your baseline price — a contractual or policy floor below which
+     sales cannot go regardless of volume. Currently set at 75% of
+     baseline, meaning deals in high-volume segments can compress all
+     the way to 75% of full price before being blocked. Raising this to
+     95% directly lifts revenue in every segment currently at or near
+     the floor. This is the highest-leverage pricing governance lever.
+     How it's calculated:  ASP floor: 75% → 95% of baseline (prevents ASP from compressing below this at any volume) → +$42.4M bookings
+     >>> Gap closed at this point <<<
+
+  2. Raise win-rate floor: 0.80 → 0.95 multiplier  →  +$29.8M bookings  (+16.8% of base bookings)
+     Impact:  +16.8% of base bookings  |  closes 280% of gap  |  cumulative: +$72.3M
+     What this means:
+     The win-rate floor is the minimum close rate guaranteed regardless
+     of how much volume is pushed through a segment. At the current
+     floor of 80% of baseline, close rates can decay down to 80% before
+     being floored. Raising to 95% means the team cannot accept deals
+     they are less likely than 95% relative close rate to win. This is
+     essentially a funnel quality gate — fewer but higher-probability
+     deals.
+     How it's calculated:  Win-rate floor: 80% → 95% of baseline (guarantees minimum close rate at any volume) → +$29.8M bookings
+
+  3. Slow win-rate decay: 0.0050 → 0.0010 rate  →  +$1.2M bookings  (+0.7% of base bookings)
+     Impact:  +0.7% of base bookings  |  closes 11% of gap  |  cumulative: +$73.5M
+     What this means:
+     Win-rate decay rate captures the linear erosion of your close rate
+     as volume increases in a segment — modelling the reality that
+     chasing more deals means lower-quality ones enter the funnel. At
+     rate 0.0050, close rate drops by ~130pp across the volume range.
+     Reducing to 0.0010 limits that drop to ~26pp. Levers: tighter ICP
+     qualification, better discovery scoring, or dedicated deal desk
+     support at scale.
+     How it's calculated:  Win-rate decay rate: 0.0050 → 0.0010 (slower decay preserves CW rate at volume) → +$1.2M bookings
+
+  4. Slow ASP decay rate: 0.0010 → 0.0003 rate  →  +$0.5M bookings  (+0.3% of base bookings)
+     Impact:  +0.3% of base bookings  |  closes 5% of gap  |  cumulative: +$74.0M
+     What this means:
+     ASP decay rate controls how fast average deal size erodes as you
+     push more opportunities through a segment. It follows an
+     exponential curve: at the current rate of 0.0010, ASP has already
+     compressed by ~29% at the segment's volume threshold. Reducing the
+     rate to 0.0003 limits that compression to ~10%. In practice this
+     means enforcing pricing discipline — fewer ad-hoc discounts,
+     stronger commercial terms, or redirecting high-volume low-margin
+     deals.
+     How it's calculated:  ASP decay rate: 0.0010 → 0.0003 (slower decay preserves higher ASP at volume) → +$0.5M bookings
+
+  Maximum upside (all levers): +$74.0M
+  Gap CAN be closed by combining the levers above.
+
+NEGLIGIBLE IMPACT LEVERS
+----------------------------------------------------------------------
+  − Add tenured AEs: moving to bound has <$1K estimated impact
+  − Reduce ramp time: moving to bound has <$1K estimated impact
+  − Reduce backfill delay: moving to bound has <$1K estimated impact
+  − Reduce mentoring overhead: moving to bound has <$1K estimated impact
+  − Reduce PTO shrinkage: moving to bound has <$1K estimated impact
+  − Reduce admin overhead: moving to bound has <$1K estimated impact
+
+======================================================================
+NOTE: All estimates are first-order analytical approximations.
+Combining multiple levers may have compounding or offsetting effects.
+Validate top 1-2 levers by running --mode what-if before committing.
+======================================================================
