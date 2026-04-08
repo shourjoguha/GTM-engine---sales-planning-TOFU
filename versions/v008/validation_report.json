@@ -1,0 +1,75 @@
+{
+  "passed": false,
+  "checks": [
+    {
+      "name": "Revenue Identity",
+      "passed": true,
+      "message": "OK: Revenue identity verified across 108 rows.",
+      "details": {
+        "failures": [],
+        "total_rows": 108
+      }
+    },
+    {
+      "name": "Share Constraints",
+      "passed": true,
+      "message": "OK: All shares within bounds across 108 rows.",
+      "details": {
+        "violations": []
+      }
+    },
+    {
+      "name": "Share Sum",
+      "passed": true,
+      "message": "OK: Shares sum to 1.0 for all 12 period(s).",
+      "details": {
+        "failures": []
+      }
+    },
+    {
+      "name": "No Negative Values",
+      "passed": true,
+      "message": "OK: No negatives.",
+      "details": {
+        "violations": []
+      }
+    },
+    {
+      "name": "Capacity Constraint",
+      "passed": true,
+      "message": "OK: Demand <= supply for all periods.",
+      "details": {
+        "violations": []
+      }
+    },
+    {
+      "name": "Target Alignment",
+      "passed": false,
+      "message": "Projected $177,357,261 vs target $187,500,000 (error: 5.4%)",
+      "details": {
+        "total_projected": 177357260.60569188,
+        "total_target": 187500000.00000003,
+        "rel_error_pct": 5.409461010297679
+      }
+    },
+    {
+      "name": "Confidence Coverage",
+      "passed": true,
+      "message": "Confidence data not available; skipping.",
+      "details": {}
+    },
+    {
+      "name": "In-Window Target Alignment (Cash Cycle)",
+      "passed": false,
+      "message": "In-window $159,123,199 vs target $187,500,000",
+      "details": {
+        "total_in_window_bookings": 159123199.00317827,
+        "total_deferred_bookings": 18234061.602513615,
+        "total_bookings": 177357260.60569188,
+        "total_target": 187500000.00000003,
+        "in_window_pct": 89.71902162886224
+      }
+    }
+  ],
+  "summary": "VALIDATION FAILED: 6/8 passed.\n  - Target Alignment: Projected $177,357,261 vs target $187,500,000 (error: 5.4%)\n  - In-Window Target Alignment (Cash Cycle): In-window $159,123,199 vs target $187,500,000\n"
+}
