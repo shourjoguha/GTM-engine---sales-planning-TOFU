@@ -1095,19 +1095,109 @@ class OptimizerLayer:
                 return capacity_limit - (target_revenue / wr if wr > 0 else 1e10)
             constraints_list.append({"type": "ineq", "fun": cap_constraint})
 
-        bounds = [(self.share_floor, self.share_ceiling)] * n_segments
-        result = minimize(
-            objective, x0, method=self.solver_config["method"],
-            bounds=bounds, constraints=constraints_list,
-            options={"maxiter": self.solver_config["max_iterations"],
-                     "ftol": self.solver_config["convergence_tolerance"]}
+        # Validate and fix constraints before calling the solver
+        self.share_floor, self.share_ceiling = self._validate_and_fix_constraints(
+            n_segments, self.share_floor, self.share_ceiling
         )
+
+        # Set up bounds with validated constraints
+        bounds = [(self.share_floor, self.share_ceiling)] * n_segments
+
+        # Add per-segment floor/ceiling inequality constraints
+        def floor_constraint(shares_array):
+            return np.min(shares_array) - self.share_floor
+
+        def ceiling_constraint(shares_array):
+            return self.share_ceiling - np.max(shares_array)
+
+        constraints_list.append({"type": "ineq", "fun": floor_constraint})
+        constraints_list.append({"type": "ineq", "fun": ceiling_constraint})
+
+        print(f"[optimizer] Constraint setup complete. Starting {self.solver_config['method']}...", flush=True)
+
+        # Try SLSQP first
+        solver_options = {
+            "ftol": self.solver_config["convergence_tolerance"],
+            "maxiter": 500,
+        }
+
+        result = minimize(
+            objective, x0, method="SLSQP",
+            bounds=bounds, constraints=constraints_list,
+            options=solver_options
+        )
+
+        # If SLSQP fails, try trust-constr (more robust)
+        if not result.success:
+            print(f"[optimizer] SLSQP failed ({result.message}), trying trust-constr...", flush=True)
+            result = minimize(
+                objective, x0, method="trust-constr",
+                bounds=bounds, constraints=constraints_list,
+                options={"maxiter": 500}
+            )
+            if result.success:
+                print(f"[optimizer] trust-constr succeeded", flush=True)
+            else:
+                print(f"[optimizer] trust-constr also failed ({result.message}), using greedy fallback", flush=True)
+
         if result.success:
             optimal_shares = {segment_keys[i]: result.x[i] for i in range(n_segments)}
         else:
+            # Fallback to greedy initial point
             optimal_shares = {segment_keys[i]: x0[i] for i in range(n_segments)}
 
         return self._build_results_df(period_data, segments, optimal_shares, target_revenue, economics_engine, capacity_limit)
+
+    def _validate_and_fix_constraints(self, n_segments: int, share_floor: float, share_ceiling: float) -> tuple:
+        """
+        Validate that constraints are feasible. If not, auto-adjust them.
+
+        Returns: (adjusted_share_floor, adjusted_share_ceiling)
+        """
+        min_sum = share_floor * n_segments
+        max_sum = share_ceiling * n_segments
+
+        print(f"[optimizer] Constraint validation: n_segments={n_segments}, "
+              f"share_floor={share_floor}, share_ceiling={share_ceiling}", flush=True)
+        print(f"[optimizer] Sum bounds: min_sum={min_sum:.3f}, max_sum={max_sum:.3f}", flush=True)
+
+        # Check feasibility
+        if min_sum > 1.0:
+            print(f"[optimizer] WARNING: share_floor × n_segments = {min_sum:.3f} > 1.0 (infeasible!)", flush=True)
+            # Auto-adjust: reduce share_floor so min_sum ≤ 1.0
+            adjusted_floor = max(0.0, 1.0 / n_segments * 0.95)  # 95% of equal split
+            print(f"[optimizer] Auto-adjusting share_floor from {share_floor} to {adjusted_floor:.4f}", flush=True)
+            share_floor = adjusted_floor
+
+        if max_sum < 1.0:
+            print(f"[optimizer] WARNING: share_ceiling × n_segments = {max_sum:.3f} < 1.0 (infeasible!)", flush=True)
+            # Auto-adjust: increase share_ceiling so max_sum ≥ 1.0
+            adjusted_ceiling = min(1.0, 1.0 / n_segments * 1.05)  # 105% of equal split
+            print(f"[optimizer] Auto-adjusting share_ceiling from {share_ceiling} to {adjusted_ceiling:.4f}", flush=True)
+            share_ceiling = adjusted_ceiling
+
+        if share_floor >= share_ceiling:
+            print(f"[optimizer] ERROR: share_floor ({share_floor}) >= share_ceiling ({share_ceiling})", flush=True)
+            # Make them equal to equal split
+            equal_split = 1.0 / n_segments
+            share_floor = equal_split * 0.9
+            share_ceiling = equal_split * 1.1
+            print(f"[optimizer] Auto-adjusting to floor={share_floor:.4f}, ceiling={share_ceiling:.4f}", flush=True)
+
+        # Final validation
+        min_sum = share_floor * n_segments
+        max_sum = share_ceiling * n_segments
+        print(f"[optimizer] After adjustment: min_sum={min_sum:.3f}, max_sum={max_sum:.3f}", flush=True)
+
+        if min_sum > 1.0 or max_sum < 1.0:
+            raise ValueError(
+                f"Constraints are mathematically infeasible: "
+                f"share_floor × n_segments = {min_sum:.3f}, "
+                f"share_ceiling × n_segments = {max_sum:.3f}. "
+                f"Cannot allocate shares that sum to 1.0."
+            )
+
+        return share_floor, share_ceiling
 
     def _get_segment_roi(self, segment_key, base_asp, base_cw, volume, economics_engine, is_supersized=False):
         if base_asp < 0 or base_cw < 0 or base_cw > 1:
