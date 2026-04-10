@@ -23,6 +23,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from scipy.optimize import minimize, curve_fit
+from functools import lru_cache
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -244,7 +246,7 @@ class DataLayer:
         raise ValueError(f"Unsupported file format: {suffix}. Use .csv, .xlsx, or .xls")
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
+        df = df.copy(deep=False)
         df = self._filter_columns(df)
         df = self._standardize_columns(df)
         required_metrics = ['asp', 'close_win_rate']
@@ -393,8 +395,9 @@ class DataLayer:
                         baselines[seg_key] = entry
             else:
                 agg_result = grouped[metric_cols].agg(agg_func)
-                for idx, row in agg_result.iterrows():
+                for idx in agg_result.index:
                     seg_key = ".".join(str(v) for v in idx) if isinstance(idx, tuple) else str(idx)
+                    row = agg_result.loc[idx]
                     entry = {}
                     if asp_col and not pd.isna(row.get(asp_col, float('nan'))):
                         entry['asp'] = float(row[asp_col])
@@ -499,7 +502,7 @@ class TargetLayer:
             return self._apply_rolling_forward(base_targets, actuals)
         elif planning_mode == "manual_lock":
             return self._apply_manual_locks(base_targets)
-        return base_targets.copy()
+        return base_targets.copy(deep=False)
 
     def _build_monthly_targets(self, annual_target: float, weights: Dict[int, float]) -> pd.DataFrame:
         rows = []
@@ -522,7 +525,7 @@ class TargetLayer:
         return pd.DataFrame(rows)
 
     def _apply_rolling_forward(self, base_targets: pd.DataFrame, actuals: pd.DataFrame) -> pd.DataFrame:
-        result = base_targets.copy()
+        result = base_targets.copy(deep=False)
         if not actuals.empty:
             actuals_renamed = actuals.rename(columns={"revenue": "actual_revenue"})
             result = result.merge(actuals_renamed[["period", "actual_revenue"]], on="period", how="left")
@@ -539,7 +542,7 @@ class TargetLayer:
         return result
 
     def _apply_manual_locks(self, base_targets: pd.DataFrame) -> pd.DataFrame:
-        result = base_targets.copy()
+        result = base_targets.copy(deep=False)
         locked_periods = self.config.get("targets.locked_months", [])
         if not locked_periods:
             return result
@@ -733,6 +736,7 @@ class EconomicsLayer:
         self._base_asp_values: Dict[str, float] = {}
         self._base_win_rate_values: Dict[str, float] = {}
         self._baselines_loaded = False
+        self._config_lock = threading.Lock()
         default_decay = self.config.get("economics.default_decay", {})
         if not default_decay:
             raise ValueError("economics.default_decay must be configured")
@@ -756,6 +760,19 @@ class EconomicsLayer:
         rate = decay_config.get("rate", 0.0)
         threshold = decay_config.get("threshold", 0)
         floor_multiplier = decay_config.get("floor_multiplier", 0.5)
+        
+        return self._cached_decay(base_value, volume, function_type, rate, threshold, floor_multiplier)
+
+    @lru_cache(maxsize=10000)
+    def _cached_decay(
+        self,
+        base_value: float,
+        volume: float,
+        function_type: str,
+        rate: float,
+        threshold: int,
+        floor_multiplier: float
+    ) -> float:
         floor_value = base_value * floor_multiplier
 
         if function_type == "none":
@@ -806,6 +823,11 @@ class EconomicsLayer:
             if 'win_rate' in values:
                 self._base_win_rate_values[seg_key] = values['win_rate']
         self._baselines_loaded = True
+
+    def update_config(self, new_config: Dict[str, Any]) -> None:
+        with self._config_lock:
+            self.config = new_config
+            self._cached_decay.cache_clear()
 
     def set_base_value(self, segment: str, metric: str, value: float) -> None:
         if metric == "asp":
@@ -865,7 +887,7 @@ class CalibrationLayer:
         self.economics_engine = None
 
     def fit(self, deal_data: pd.DataFrame, segment: str, param: str) -> Dict[str, float]:
-        segment_deals = deal_data[deal_data["segment"] == segment].copy()
+        segment_deals = deal_data[deal_data["segment"] == segment].copy(deep=False)
         min_deals = self.config.get("economics.calibration.min_deals_for_fit", 50)
         if len(segment_deals) < min_deals:
             raise ValueError(f"Segment {segment} has {len(segment_deals)} deals, need at least {min_deals}")
@@ -963,7 +985,7 @@ class OptimizerLayer:
         for period in sorted(periods):
             period_targets = targets[targets[period_col] == period]
             target_revenue = period_targets["target_revenue"].iloc[0]
-            period_data = base_data[base_data[period_col_base] == period].copy()
+            period_data = base_data[base_data[period_col_base] == period].copy(deep=False)
             capacity_limit = None
             if capacity is not None:
                 period_col_cap = None
@@ -983,7 +1005,7 @@ class OptimizerLayer:
         return pd.concat(results_list, ignore_index=True)
 
     def _optimize_period_greedy(self, period_data, target_revenue, economics_engine, capacity_limit):
-        period_data = period_data.copy()
+        period_data = period_data.copy(deep=False)
         active_dims = self._get_active_dimensions(period_data)
         period_data["segment_key"] = self._create_segment_key(period_data, active_dims)
         segments = period_data.groupby("segment_key").first().reset_index()
@@ -1029,7 +1051,7 @@ class OptimizerLayer:
         return self._build_results_df(period_data, segments, shares, target_revenue, economics_engine, capacity_limit)
 
     def _optimize_period_solver(self, period_data, target_revenue, economics_engine, capacity_limit):
-        period_data = period_data.copy()
+        period_data = period_data.copy(deep=False)
         active_dims = self._get_active_dimensions(period_data)
         period_data["segment_key"] = self._create_segment_key(period_data, active_dims)
         segments = period_data.groupby("segment_key").first().reset_index()
@@ -1251,30 +1273,33 @@ class ValidationLayer:
             return {"name": check_name, "passed": False,
                     "message": f"Missing columns: {required - set(results.columns)}",
                     "details": {"missing_columns": list(required - set(results.columns))}}
-        results_copy = results.copy()
-        results_copy["expected_bookings"] = results_copy["required_saos"] * results_copy["effective_asp"] * results_copy["effective_cw_rate"]
-        passed, failures = True, []
-        for idx, row in results_copy.iterrows():
-            expected = row["expected_bookings"]
-            actual = row["projected_bookings"]
-            if expected > 0:
-                rel_error = abs(actual - expected) / expected
-                if rel_error > self.revenue_tolerance:
-                    failures.append({"row_index": idx, "expected": expected, "actual": actual, "rel_error_pct": rel_error * 100})
-                    passed = False
-        message = f"OK: Revenue identity verified across {len(results_copy)} rows." if passed else f"FAIL: {len(failures)} row(s) violate revenue identity"
-        return {"name": check_name, "passed": passed, "message": message, "details": {"failures": failures, "total_rows": len(results_copy)}}
+        expected_bookings = results["required_saos"] * results["effective_asp"] * results["effective_cw_rate"]
+        mask = (expected_bookings > 0) & (
+            abs(results["projected_bookings"] - expected_bookings) / expected_bookings > self.revenue_tolerance
+        )
+        if mask.any():
+            failures = results[mask].reset_index().assign(
+                expected_bookings=expected_bookings[mask],
+                rel_error_pct=lambda x: abs(x["projected_bookings"] - x["expected_bookings"]) / x["expected_bookings"] * 100
+            )[["index", "expected_bookings", "projected_bookings", "rel_error_pct"]].to_dict("records")
+            passed = False
+        else:
+            failures = []
+            passed = True
+        message = f"OK: Revenue identity verified across {len(results)} rows." if passed else f"FAIL: {len(failures)} row(s) violate revenue identity"
+        return {"name": check_name, "passed": passed, "message": message, "details": {"failures": failures, "total_rows": len(results)}}
 
     def _check_share_constraints(self, results):
         check_name = "Share Constraints"
         if "share" not in results.columns:
             return {"name": check_name, "passed": False, "message": "Missing 'share' column.", "details": {}}
-        passed, violations = True, []
-        for idx, row in results.iterrows():
-            share = row.get("share", 0)
-            if share < self.share_floor - self.tolerance or share > self.share_ceiling + self.tolerance:
-                violations.append({"row_index": idx, "share": share})
-                passed = False
+        mask = (results["share"] < self.share_floor - self.tolerance) | (results["share"] > self.share_ceiling + self.tolerance)
+        if mask.any():
+            violations = results[mask].reset_index()[["index", "share"]].rename(columns={"index": "row_index"}).to_dict("records")
+            passed = False
+        else:
+            violations = []
+            passed = True
         message = f"OK: All shares within bounds across {len(results)} rows." if passed else f"FAIL: {len(violations)} row(s) violate share constraints."
         return {"name": check_name, "passed": passed, "message": message, "details": {"violations": violations}}
 
@@ -1397,7 +1422,7 @@ class RecoveryLayer:
         cumulative_target = quarterly_gaps["target"].sum()
         total_shortfall = max(0, cumulative_target - cumulative_projected)
 
-        recovery_plan = quarterly_gaps[["quarter", "target"]].copy()
+        recovery_plan = quarterly_gaps[["quarter", "target"]].copy(deep=False)
         recovery_plan.columns = ["quarter", "adjusted_target"]
         stretch_flags = []
         mentoring_relief = {}
@@ -1685,7 +1710,7 @@ class AdjustmentLayer:
         }
 
     def _merge_actuals(self, plan, actuals):
-        merged = plan.copy()
+        merged = plan.copy(deep=False)
         locked_periods, total_locked = [], 0.0
         if len(actuals) == 0:
             return merged, locked_periods, 0.0

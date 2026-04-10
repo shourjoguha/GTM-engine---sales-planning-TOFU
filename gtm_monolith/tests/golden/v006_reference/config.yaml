@@ -58,7 +58,8 @@ allocation:
   constraints:
     share_floor: 0.03
     share_ceiling: 0.4
-  optimizer_mode: solver
+    optimizer_mode: solver
+    use_roi_cache: false
 economics:
   use_calibration: false
   baseline:
