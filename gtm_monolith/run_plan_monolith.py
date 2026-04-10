@@ -204,14 +204,15 @@ def build_cashcycle_waterfall(
 ) -> pd.DataFrame:
     """Build month-by-month booking realization waterfall from cash cycle delays."""
     horizon = config.get("economics.cash_cycle", {}).get("planning_horizon_months", 12)
+    months = results["month"].astype(int).values
+    seg_keys = results["segment_key"].values
+    total_bookings = results["projected_bookings"].values
+    
     rows = []
-    for _, row in results.iterrows():
-        month = int(row["month"])
-        seg_key = row["segment_key"]
+    for i, (month, seg_key, bookings) in enumerate(zip(months, seg_keys, total_bookings)):
         product = economics._extract_product_from_segment(seg_key)
         schedule = economics.get_realization_schedule(product)
-        total_bookings = row["projected_bookings"]
-
+        
         for delay, prob in schedule.items():
             booking_month = month + int(delay)
             rows.append({
@@ -221,8 +222,8 @@ def build_cashcycle_waterfall(
                 "product": product,
                 "delay_months": int(delay),
                 "probability": prob,
-                "sao_bookings": total_bookings,
-                "realized_bookings": total_bookings * prob,
+                "sao_bookings": bookings,
+                "realized_bookings": bookings * prob,
                 "in_window": booking_month <= horizon,
             })
     return pd.DataFrame(rows)
@@ -233,13 +234,13 @@ def prepare_recovery_inputs(
     capacity: pd.DataFrame,
 ) -> tuple:
     """Add column aliases required by RecoveryLayer."""
-    targets_r = targets.copy()
+    targets_r = targets.copy(deep=False)
     if "target_revenue" in targets_r.columns and "target_bookings" not in targets_r.columns:
         targets_r["target_bookings"] = targets_r["target_revenue"]
     if "quarter" not in targets_r.columns and "month" in targets_r.columns:
         targets_r["quarter"] = (targets_r["month"] - 1) // 3 + 1
 
-    capacity_r = capacity.copy()
+    capacity_r = capacity.copy(deep=False)
     if "quarter" not in capacity_r.columns and "month" in capacity_r.columns:
         capacity_r["quarter"] = (capacity_r["month"] - 1) // 3 + 1
     if "effective_capacity" not in capacity_r.columns and "effective_capacity_saos" in capacity_r.columns:
@@ -250,7 +251,7 @@ def prepare_recovery_inputs(
 
 def alias_columns_for_adjustment(df: pd.DataFrame) -> pd.DataFrame:
     """Add column aliases that AdjustmentLayer expects (segment, period)."""
-    out = df.copy()
+    out = df.copy(deep=False)
     if "segment_key" in out.columns and "segment" not in out.columns:
         out["segment"] = out["segment_key"]
     if "month" in out.columns and "period" not in out.columns:
