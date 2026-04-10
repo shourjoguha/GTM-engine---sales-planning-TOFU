@@ -1096,15 +1096,35 @@ class OptimizerLayer:
             constraints_list.append({"type": "ineq", "fun": cap_constraint})
 
         bounds = [(self.share_floor, self.share_ceiling)] * n_segments
-        result = minimize(
-            objective, x0, method=self.solver_config["method"],
-            bounds=bounds, constraints=constraints_list,
-            options={"maxiter": self.solver_config["max_iterations"],
-                     "ftol": self.solver_config["convergence_tolerance"]}
-        )
-        if result.success:
+
+        solver_options = {
+            "maxiter": min(self.solver_config["max_iterations"], 500),  # Safety limit: max 500 iterations
+            "ftol": self.solver_config["convergence_tolerance"],
+        }
+        print(f"[optimizer] Starting {self.solver_config['method']} with maxiter={solver_options['maxiter']}, "
+              f"n_segments={n_segments}", flush=True)
+
+        result = None
+        try:
+            result = minimize(
+                objective, x0, method=self.solver_config["method"],
+                bounds=bounds, constraints=constraints_list,
+                options=solver_options,
+            )
+            print(f"[optimizer] {self.solver_config['method']} completed: success={result.success}, "
+                  f"iterations={result.nit}, message={result.message}", flush=True)
+        except Exception as e:
+            print(f"[optimizer] {self.solver_config['method']} failed: {e}. Falling back to greedy.", flush=True)
+            result = None
+
+        if result is not None and result.success:
             optimal_shares = {segment_keys[i]: result.x[i] for i in range(n_segments)}
+        elif result is not None and not result.success:
+            # Solver did not converge — fall back to greedy result (already computed as x0)
+            print(f"[optimizer] Solver did not converge, using greedy fallback shares.", flush=True)
+            optimal_shares = {segment_keys[i]: x0[i] for i in range(n_segments)}
         else:
+            # Exception path — fall back to greedy
             optimal_shares = {segment_keys[i]: x0[i] for i in range(n_segments)}
 
         return self._build_results_df(period_data, segments, optimal_shares, target_revenue, economics_engine, capacity_limit)
