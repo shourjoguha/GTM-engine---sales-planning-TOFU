@@ -428,17 +428,38 @@ def _run_full_pipeline(runtime_config: dict, description: str) -> dict:
     print(f"[pipeline] Stage 5 done ({_elapsed()})", flush=True)
 
     # Stage 6: Optimization
-    print(f"[pipeline] Stage 6: Running optimizer...", flush=True)
-    optimizer = OptimizerLayer(config)
-    results = optimizer.optimize(
-        targets=targets,
-        base_data=df_clean,
-        economics_engine=economics,
-        capacity=capacity,
-    )
-    opt_summary = optimizer.get_optimization_summary(results)
-    enriched = build_enriched_summary(opt_summary, capacity, results)
-    print(f"[pipeline] Stage 6 done ({_elapsed()})", flush=True)
+    print(f"[pipeline] Stage 6: Running allocation optimizer...", flush=True)
+
+    def _optimizer_timeout_handler(signum, frame):
+        raise TimeoutError("Optimizer exceeded 120 second timeout")
+
+    signal.signal(signal.SIGALRM, _optimizer_timeout_handler)
+    signal.alarm(120)
+    try:
+        optimizer = OptimizerLayer(config)
+        results = optimizer.optimize(
+            targets=targets,
+            base_data=df_clean,
+            economics_engine=economics,
+            capacity=capacity,
+        )
+        signal.alarm(0)  # Cancel alarm on success
+        opt_summary = optimizer.get_optimization_summary(results)
+        enriched = build_enriched_summary(opt_summary, capacity, results)
+        print(f"[pipeline] Stage 6 done ({_elapsed()})", flush=True)
+    except TimeoutError:
+        signal.alarm(0)
+        print(f"[pipeline] Stage 6 TIMEOUT after 120 seconds — optimizer hung", flush=True)
+        raise RuntimeError(
+            "Optimizer timeout: scipy.optimize.minimize() exceeded 120 seconds. "
+            "This is a known scipy bug with certain constraint configurations. "
+            "Try adjusting allocation.constraints (share_floor/share_ceiling) or "
+            "set allocation.optimizer_mode to 'greedy'."
+        )
+    except Exception as e:
+        signal.alarm(0)
+        print(f"[pipeline] Stage 6 ERROR: {e}", flush=True)
+        raise
 
     # Stage 7: Validation
     print(f"[pipeline] Stage 7: Validating...", flush=True)
@@ -547,8 +568,27 @@ def run_plan():
 
         normalize_cash_cycle_distribution_keys(runtime_config)
 
-        # Direct in-process execution — no subprocess
-        result = _run_full_pipeline(runtime_config, description)
+        # Set 180-second hard timeout for the entire pipeline
+        def _pipeline_timeout_handler(signum, frame):
+            raise TimeoutError("Pipeline exceeded 180 second timeout")
+
+        signal.signal(signal.SIGALRM, _pipeline_timeout_handler)
+        signal.alarm(180)
+        try:
+            result = _run_full_pipeline(runtime_config, description)
+            signal.alarm(0)  # Cancel alarm on success
+        except TimeoutError:
+            signal.alarm(0)
+            return jsonify({
+                "error": "Pipeline timeout: optimizer hung for >120 seconds. This is a known scipy bug.",
+                "suggestion": (
+                    "Try adjusting allocation.constraints.share_floor/share_ceiling "
+                    "or set allocation.optimizer_mode to 'greedy'."
+                ),
+            }), 504
+        except Exception as e:
+            signal.alarm(0)
+            return jsonify({"error": str(e)}), 500
 
         version_id = result["version_id"]
         response = {
